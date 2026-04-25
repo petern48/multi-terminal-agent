@@ -4,8 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MCPServer = void 0;
-const mcp_1 = require("@modelcontextprotocol/sdk/server/mcp");
-const streamableHttp_1 = require("@modelcontextprotocol/sdk/server/streamableHttp");
+const mcp_js_1 = require("@modelcontextprotocol/sdk/server/mcp.js");
+const streamableHttp_js_1 = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const express_1 = __importDefault(require("express"));
 const zod_1 = require("zod");
 function ok(text) {
@@ -21,7 +21,7 @@ class MCPServer {
         this.httpServer = null;
     }
     start(port) {
-        const server = new mcp_1.McpServer({ name: "multi-terminal", version: "1.0.0" });
+        const server = new mcp_js_1.McpServer({ name: "multi-terminal", version: "1.0.0" });
         server.tool("create_terminal", "Create a named terminal tab in VS Code", {
             name: zod_1.z.string().describe("Unique name for the terminal"),
             cwd: zod_1.z.string().optional().describe("Working directory path"),
@@ -95,7 +95,7 @@ class MCPServer {
         app.use(express_1.default.json());
         // One transport per request (stateless mode)
         app.post("/mcp", async (req, res) => {
-            const transport = new streamableHttp_1.StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+            const transport = new streamableHttp_js_1.StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
             res.on("close", () => transport.close());
             await server.connect(transport);
             await transport.handleRequest(req, res, req.body);

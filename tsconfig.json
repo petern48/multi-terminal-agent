@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
+      "@modelcontextprotocol/sdk/*.js": ["./node_modules/@modelcontextprotocol/sdk/dist/cjs/*"],
       "@modelcontextprotocol/sdk/*": ["./node_modules/@modelcontextprotocol/sdk/dist/cjs/*"]
     }
   },
