@@ -4,6 +4,7 @@ exports.TerminalManager = void 0;
 const child_process_1 = require("child_process");
 const promises_1 = require("fs/promises");
 const path_1 = require("path");
+const os_1 = require("os");
 const util_1 = require("util");
 const execFile = (0, util_1.promisify)(child_process_1.execFile);
 function stripAnsi(str) {
@@ -64,35 +65,30 @@ class TerminalManager {
     async runCommand(name, command, timeoutMs = 30000) {
         const entry = this.getAlive(name);
         const id = uid();
-        const channel = `mta_ch_${id}`;
-        const scriptFile = `/tmp/mta_cmd_${id}.sh`;
-        const outFile = `/tmp/mta_out_${id}`;
-        const exitFile = `/tmp/mta_exit_${id}`;
-        // Write a temp script so the pane only shows "bash /tmp/mta_cmd_xxx.sh"
-        const script = [
-            "#!/bin/bash",
-            `${command} 2>&1 | tee ${outFile}`,
-            `echo \${PIPESTATUS[0]} > ${exitFile}`,
-            `tmux wait-for -S ${channel}`,
-        ].join("\n");
-        await (0, promises_1.writeFile)(scriptFile, script, { mode: 0o755 });
-        await execFile("tmux", ["send-keys", "-t", entry.target, `bash ${scriptFile}`, "Enter"]);
-        // Block until the signal fires (or timeout)
-        try {
-            await execFile("tmux", ["wait-for", channel], { timeout: timeoutMs });
+        const startMarker = `__MTA_START_${id}__`;
+        const endMarker = `__MTA_END_${id}__`;
+        // Type the command directly — works in any shell (local, SSH, Docker, etc.)
+        // Sentinels delimit output; polling capture-pane avoids any dependency on tmux/local files
+        const wrapped = `echo '${startMarker}'; ${command}; echo '${endMarker}':$?`;
+        await execFile("tmux", ["send-keys", "-t", entry.target, wrapped, "Enter"]);
+        // Poll until end marker appears in scrollback
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 150));
+            const { stdout: raw } = await execFile("tmux", ["capture-pane", "-t", entry.target, "-p", "-S", "-5000"]);
+            const lines = stripAnsi(raw).split("\n");
+            const endIdx = lines.findLastIndex((l) => l.includes(endMarker));
+            if (endIdx === -1)
+                continue;
+            const startIdx = lines.findLastIndex((l) => l.includes(startMarker));
+            const output = (startIdx !== -1 && endIdx > startIdx)
+                ? lines.slice(startIdx + 1, endIdx).join("\n").trim()
+                : lines.slice(Math.max(0, endIdx - 100), endIdx).join("\n").trim();
+            const match = lines[endIdx].match(/:(\d+)$/);
+            const exitCode = match ? parseInt(match[1], 10) : undefined;
+            return { output, exitCode };
         }
-        catch (e) {
-            const isTimeout = e instanceof Error && e.message.includes("timed out");
-            if (!isTimeout)
-                throw e;
-            return { output: `(timed out after ${timeoutMs}ms)`, exitCode: undefined };
-        }
-        const output = stripAnsi(await (0, promises_1.readFile)(outFile, "utf8").catch(() => "")).trim();
-        const exitCodeStr = (await (0, promises_1.readFile)(exitFile, "utf8").catch(() => "")).trim();
-        const exitCode = exitCodeStr ? parseInt(exitCodeStr, 10) : undefined;
-        // Clean up temp files
-        await Promise.all([(0, promises_1.unlink)(scriptFile), (0, promises_1.unlink)(outFile), (0, promises_1.unlink)(exitFile)].map((p) => p.catch(() => { })));
-        return { output, exitCode };
+        return { output: `(timed out after ${timeoutMs}ms)`, exitCode: undefined };
     }
     async sendInput(name, text) {
         const entry = this.getAlive(name);
@@ -137,16 +133,25 @@ class TerminalManager {
         this.entries.delete(name);
         return `Closed terminal "${name}"`;
     }
-    async writeFile(filePath, content) {
-        const cwd = process.cwd();
-        const abs = (0, path_1.resolve)(cwd, filePath);
-        if ((0, path_1.relative)(cwd, abs).startsWith("..")) {
-            throw new Error(`Path "${filePath}" is outside the working directory (${cwd})`);
+    async writeFile(path, content) {
+        const tmpPath = (0, path_1.resolve)((0, os_1.tmpdir)(), `mta_wf_${uid()}`);
+        await (0, promises_1.writeFile)(tmpPath, content, "utf8");
+        try {
+            const isRemote = /^[^/\s]+@[^:\s]+:/.test(path); // user@host:/path
+            if (isRemote) {
+                await execFile("scp", [tmpPath, path]);
+            }
+            else {
+                const abs = (0, path_1.resolve)(path);
+                await (0, promises_1.mkdir)((0, path_1.dirname)(abs), { recursive: true });
+                await (0, promises_1.rename)(tmpPath, abs);
+            }
         }
-        await (0, promises_1.mkdir)((0, path_1.dirname)(abs), { recursive: true });
-        await (0, promises_1.writeFile)(abs, content, "utf8");
+        finally {
+            await (0, promises_1.unlink)(tmpPath).catch(() => { });
+        }
         const lines = content.split("\n").length;
-        return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${abs}"`;
+        return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"`;
     }
     getAlive(name) {
         const entry = this.entries.get(name);

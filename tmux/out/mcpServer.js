@@ -43,7 +43,7 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("run_command", "Run a command in a named terminal and wait for it to finish, returning full output and exit code.", 
+        server.tool("run_command", "Run a command in a named terminal and wait for it to finish, returning full output and exit code. Works in any shell environment including local, SSH, and Docker sessions.", 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: zod_1.z.string(), command: zod_1.z.string(), timeout: zod_1.z.number().optional().describe("Timeout ms, default 30000") }, async ({ name, command, timeout }) => {
             try {
@@ -98,9 +98,9 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("write_file", "Write a file to the local filesystem (must be within the working directory). For remote machines, write locally then transfer with run_command + scp/rsync.", 
+        server.tool("write_file", "Write content to a file. For local paths, writes directly. For remote paths (user@host:/path), writes to a local temp file then SCPs it over and cleans up.", 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { path: zod_1.z.string().describe("Destination path (relative, or absolute within cwd)"), content: zod_1.z.string().describe("Full file content to write") }, async ({ path, content }) => {
+        { path: zod_1.z.string().describe("Destination: local absolute path OR scp-style remote path (user@host:/remote/path)"), content: zod_1.z.string().describe("Full file content to write") }, async ({ path, content }) => {
             try {
                 return ok(await this.tm.writeFile(path, content));
             }
