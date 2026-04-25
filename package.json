@@ -1,0 +1,46 @@
+{
+  "name": "multi-terminal",
+  "displayName": "Multi-Terminal",
+  "description": "Let AI coding agents control multiple named terminal sessions via MCP",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "multiTerminal.showStatus",
+        "title": "Multi-Terminal: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Multi-Terminal",
+      "properties": {
+        "multiTerminal.port": {
+          "type": "number",
+          "default": 3456,
+          "description": "Port for the MCP server that agents connect to"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "express": "^4.18.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
