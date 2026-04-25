@@ -29,6 +29,7 @@ Key rules:
 - Local commands (file writes, scp, docker cp, curl) always go in the local terminal. Remote/container commands always go in the remote terminal.
 - Port bindings are stored on the terminal entry. Use list_terminals to look them up when deciding which host/port to target.
 - Prefer running commands in a terminal created from this MCP server over running it separately.
+- To modify a remote file: generate a unified diff (git diff format with a/ b/ prefixes) and call patch_file with the terminal name, filepath, and diff. Never overwrite remote files in their entirety with write_file or scp. Use write_file only for new files or local files.
     `.trim();
 
     const server = new McpServer(
@@ -113,6 +114,19 @@ Key rules:
       } as any,
       async ({ path, content, target_terminal }: { path: string; content: string; target_terminal?: string }): Promise<ToolResult> => {
         try { return ok(await this.tm.writeFile(path, content, target_terminal ? { target_terminal } : undefined)); } catch (e) { return fail(e); }
+      });
+
+    server.tool("patch_file",
+      "Apply a unified diff to a file inside a named terminal. Writes the patch to a temp file (making the diff visible in the terminal), then applies it with git apply or patch -p1. Use this instead of write_file when modifying existing remote files — never overwrite them in their entirety.",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {
+        terminal: z.string().describe("Terminal name to run the patch in"),
+        filepath: z.string().describe("Absolute path to the file being patched (for context/error messages)"),
+        diff: z.string().describe("Unified diff to apply. Use standard git diff format with --- a/<path> and +++ b/<path> prefixes for best compatibility."),
+        cwd: z.string().optional().describe("Directory to run git apply / patch from (default: current terminal directory). For git repos, use the repo root."),
+      } as any,
+      async ({ terminal, filepath, diff, cwd }: { terminal: string; filepath: string; diff: string; cwd?: string }): Promise<ToolResult> => {
+        try { return ok(await this.tm.patchFile(terminal, filepath, diff, cwd)); } catch (e) { return fail(e); }
       });
 
     const transport = new StdioServerTransport();

@@ -258,6 +258,24 @@ class TerminalManager {
         const note = effectivePath !== path ? ` (remote ~ resolved to a login-style HOME, scp target: ${effectivePath})` : "";
         return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"${note}`;
     }
+    async patchFile(terminalName, filepath, unifiedDiff, cwd) {
+        const tmpPatch = `/tmp/mta_patch_${uid()}.patch`;
+        const b64 = Buffer.from(unifiedDiff, "utf8").toString("base64");
+        // Write the patch to a temp file via Python (cross-platform base64 decode)
+        const py = `import base64; open(${JSON.stringify(tmpPatch)}, "wb").write(base64.b64decode(${JSON.stringify(b64)}))`;
+        const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(py)}`, 10000);
+        if (wExit !== 0)
+            throw new Error(`Failed to write patch file: ${wOut}`);
+        // Display the diff in the terminal so it's visible
+        await this.runCommand(terminalName, `cat ${tmpPatch}`, 10000);
+        // Apply: git apply first (handles a/b/ prefixes), fall back to patch -p1
+        const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
+        const { exitCode, output } = await this.runCommand(terminalName, `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`, 30000);
+        await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5000).catch(() => { });
+        if (exitCode !== 0)
+            throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
+        return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
+    }
     getAlive(name) {
         const entry = this.entries.get(name);
         if (!entry)
