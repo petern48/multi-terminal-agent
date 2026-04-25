@@ -21,12 +21,13 @@ class MCPServer {
 This server manages named tmux terminals and supports SSH/Docker workflows via terminal pairs.
 
 Key rules:
-- Whenever you're asked to run a server, run it synchronously (not in the background by default)
+- Whenever you're asked to run a server, run it synchronously by default (not in the background with nohup)
 - Before creating an SSH pair, if the user has not provided a cwd, ask for it before proceeding. Once known, use that remote context for all subsequent file references — scp destinations, absolute paths, and run_command targets should all be expressed in terms absolute paths. Never use ~ in paths.
 - Before creating an SSH pair, if the user has not specified port mappings, ask them whether any ports are exposed between the remote and the local machine.
 - If using a ssh terminal pair, always use the correct terminal (local or remote) for each command, without trying to switch to the other from the current terminal.
 - Local commands (file writes, scp, docker cp, curl) always go in the local terminal. Remote/container commands always go in the remote terminal.
 - Port bindings are stored on the terminal entry. Use list_terminals to look them up when deciding which host/port to target.
+- Prefer running commands in a terminal created from this MCP server over running it separately.
     `.trim();
         const server = new mcp_js_1.McpServer({ name: "multi-terminal-tmux", version: "1.0.0" }, { instructions });
         server.tool("create_terminal", "Create a named tmux session. Attach with: tmux attach -t mta_{name}", {
