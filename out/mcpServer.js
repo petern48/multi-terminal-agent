@@ -47,6 +47,16 @@ class MCPServer {
                 return fail(e);
             }
         });
+        server.tool("run_command", "Run a command in a terminal and wait for it to finish, returning the full output. Requires shell integration (active by default in bash/zsh). Use this instead of send_command + read_output.", 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { name: zod_1.z.string(), command: zod_1.z.string(), timeout: zod_1.z.number().optional().describe("Timeout ms, default 30000") }, async ({ name, command, timeout }) => {
+            try {
+                return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout)));
+            }
+            catch (e) {
+                return fail(e);
+            }
+        });
         server.tool("send_command", "Send a shell command to a named terminal (executes immediately)", {
             name: zod_1.z.string(),
             command: zod_1.z.string(),

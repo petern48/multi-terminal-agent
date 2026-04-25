@@ -81,6 +81,34 @@ class TerminalManager {
         t1.show();
         return `Created terminals "${name1}" (left) and "${name2}" (right) side by side`;
     }
+    async runCommand(name, command, timeoutMs = 30000) {
+        const entry = this.getAlive(name);
+        if (!entry.terminal.shellIntegration) {
+            throw new Error(`Shell integration not active on "${name}" — run any command manually first to activate it`);
+        }
+        const execution = entry.terminal.shellIntegration.executeCommand(command);
+        // Capture exit code from the end event matched by execution identity
+        let exitCode;
+        const exitCodePromise = new Promise((resolve) => {
+            const disposable = vscode.window.onDidEndTerminalShellExecution((event) => {
+                if (event.execution === execution) {
+                    disposable.dispose();
+                    resolve(event.exitCode);
+                }
+            });
+        });
+        const chunks = [];
+        const readAll = async () => {
+            for await (const data of execution.read()) {
+                chunks.push(stripAnsi(data));
+            }
+            return chunks.join("");
+        };
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`Command timed out after ${timeoutMs}ms`)), timeoutMs));
+        const output = await Promise.race([readAll(), timeout]);
+        exitCode = await Promise.race([exitCodePromise, new Promise((r) => setTimeout(() => r(undefined), 500))]);
+        return { output, exitCode };
+    }
     sendCommand(name, command) {
         const entry = this.getAlive(name);
         entry.terminal.show(true);

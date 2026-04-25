@@ -41,6 +41,14 @@ export class MCPServer {
       try { return ok(this.tm.createTerminalPair(name1, name2, cwd)); } catch (e) { return fail(e); }
     });
 
+    server.tool("run_command",
+      "Run a command in a terminal and wait for it to finish, returning the full output. Requires shell integration (active by default in bash/zsh). Use this instead of send_command + read_output.",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { name: z.string(), command: z.string(), timeout: z.number().optional().describe("Timeout ms, default 30000") } as any,
+      async ({ name, command, timeout }: { name: string; command: string; timeout?: number }): Promise<ToolResult> => {
+        try { return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout))); } catch (e) { return fail(e); }
+      });
+
     server.tool("send_command", "Send a shell command to a named terminal (executes immediately)", {
       name: z.string(),
       command: z.string(),
