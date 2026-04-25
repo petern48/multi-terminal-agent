@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TerminalManager = void 0;
 const child_process_1 = require("child_process");
 const promises_1 = require("fs/promises");
+const path_1 = require("path");
 const util_1 = require("util");
 const execFile = (0, util_1.promisify)(child_process_1.execFile);
 function stripAnsi(str) {
@@ -135,6 +136,17 @@ class TerminalManager {
         }
         this.entries.delete(name);
         return `Closed terminal "${name}"`;
+    }
+    async writeFile(filePath, content) {
+        const cwd = process.cwd();
+        const abs = (0, path_1.resolve)(cwd, filePath);
+        if ((0, path_1.relative)(cwd, abs).startsWith("..")) {
+            throw new Error(`Path "${filePath}" is outside the working directory (${cwd})`);
+        }
+        await (0, promises_1.mkdir)((0, path_1.dirname)(abs), { recursive: true });
+        await (0, promises_1.writeFile)(abs, content, "utf8");
+        const lines = content.split("\n").length;
+        return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${abs}"`;
     }
     getAlive(name) {
         const entry = this.entries.get(name);

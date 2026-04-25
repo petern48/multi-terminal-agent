@@ -1,5 +1,6 @@
 import { execFile as execFileCb } from "child_process";
-import { writeFile, readFile, unlink } from "fs/promises";
+import { writeFile, readFile, unlink, mkdir } from "fs/promises";
+import { resolve, dirname, relative } from "path";
 import { promisify } from "util";
 
 const execFile = promisify(execFileCb);
@@ -153,6 +154,18 @@ export class TerminalManager {
     }
     this.entries.delete(name);
     return `Closed terminal "${name}"`;
+  }
+
+  async writeFile(filePath: string, content: string): Promise<string> {
+    const cwd = process.cwd();
+    const abs = resolve(cwd, filePath);
+    if (relative(cwd, abs).startsWith("..")) {
+      throw new Error(`Path "${filePath}" is outside the working directory (${cwd})`);
+    }
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, content, "utf8");
+    const lines = content.split("\n").length;
+    return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${abs}"`;
   }
 
   private getAlive(name: string): TmuxEntry {

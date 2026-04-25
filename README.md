@@ -198,3 +198,12 @@ Agent: run_command("tests", "npm test -- --grep 'auth'")
 - `run_command` requires shell integration, which is active by default in bash and zsh. If it reports "not active", run any command manually in that terminal first (pressing Enter is enough).
 - `run_command` is best for commands that terminate (build, test, git, ls). For long-running processes like dev servers, use `send_input` to interact and `read_output` to sample recent output.
 - The agent pulls output on demand — it does not receive terminal events passively.
+
+
+# TODO: for tmux, install it
+
+```bash
+
+brew install tmux
+
+```

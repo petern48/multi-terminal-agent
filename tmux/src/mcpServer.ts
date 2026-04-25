@@ -74,6 +74,14 @@ export class MCPServer {
       try { return ok(await this.tm.closeTerminal(name)); } catch (e) { return fail(e); }
     });
 
+    server.tool("write_file",
+      "Write a file to the local filesystem (must be within the working directory). For remote machines, write locally then transfer with run_command + scp/rsync.",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { path: z.string().describe("Destination path (relative, or absolute within cwd)"), content: z.string().describe("Full file content to write") } as any,
+      async ({ path, content }: { path: string; content: string }): Promise<ToolResult> => {
+        try { return ok(await this.tm.writeFile(path, content)); } catch (e) { return fail(e); }
+      });
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
   }
