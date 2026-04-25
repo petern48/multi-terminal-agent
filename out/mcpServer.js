@@ -57,18 +57,13 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("send_command", "Send a shell command to a named terminal (executes immediately)", {
-            name: zod_1.z.string(),
-            command: zod_1.z.string(),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }, async ({ name, command }) => {
-            try {
-                return ok(this.tm.sendCommand(name, command));
-            }
-            catch (e) {
-                return fail(e);
-            }
-        });
+        // server.tool("send_command", "Send a shell command to a named terminal (executes immediately)", {
+        //   name: z.string(),
+        //   command: z.string(),
+        // // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // } as any, async ({ name, command }: { name: string; command: string }): Promise<ToolResult> => {
+        //   try { return ok(this.tm.sendCommand(name, command)); } catch (e) { return fail(e); }
+        // });
         server.tool("send_input", "Send raw text to a terminal without a newline (for interactive prompts)", {
             name: zod_1.z.string(),
             text: zod_1.z.string(),

@@ -109,18 +109,17 @@ class TerminalManager {
         exitCode = await Promise.race([exitCodePromise, new Promise((r) => setTimeout(() => r(undefined), 500))]);
         return { output, exitCode };
     }
-    sendCommand(name, command) {
-        const entry = this.getAlive(name);
-        entry.terminal.show(true);
-        // Use shell integration executeCommand if available (enables output capture)
-        if (entry.terminal.shellIntegration) {
-            entry.terminal.shellIntegration.executeCommand(command);
-        }
-        else {
-            entry.terminal.sendText(command, true);
-        }
-        return `Sent command to "${name}": ${command}`;
-    }
+    // sendCommand(name: string, command: string): string {
+    //   const entry = this.getAlive(name);
+    //   entry.terminal.show(true);
+    //   // Use shell integration executeCommand if available (enables output capture)
+    //   if (entry.terminal.shellIntegration) {
+    //     entry.terminal.shellIntegration.executeCommand(command);
+    //   } else {
+    //     entry.terminal.sendText(command, true);
+    //   }
+    //   return `Sent command to "${name}": ${command}`;
+    // }
     sendInput(name, text) {
         const entry = this.getAlive(name);
         entry.terminal.sendText(text, false);
