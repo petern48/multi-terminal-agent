@@ -44,9 +44,10 @@ export class MCPServer {
         inside_name: z.string().describe("Name for the remote/container (inside) pane"),
         connect_command: z.string().describe('Command to connect to the remote, e.g. "ssh user@host", "docker exec -it mycontainer bash", "kubectl exec -it mypod -- bash"'),
         cwd: z.string().optional().describe("Working directory for the outside pane"),
+        ports: z.array(z.object({ inside: z.number(), outside: z.number() })).optional().describe("Port mappings between the remote and local machine. Each entry: inside = port on the remote/container, outside = port on the local machine. E.g. [{inside:8080,outside:3000}] means the app on port 8080 inside the container is reachable at localhost:3000 from outside."),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any, async ({ outside_name, inside_name, connect_command, cwd }: { outside_name: string; inside_name: string; connect_command: string; cwd?: string }): Promise<ToolResult> => {
-        try { return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd)); } catch (e) { return fail(e); }
+      } as any, async ({ outside_name, inside_name, connect_command, cwd, ports }: { outside_name: string; inside_name: string; connect_command: string; cwd?: string; ports?: { inside: number; outside: number }[] }): Promise<ToolResult> => {
+        try { return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd, ports)); } catch (e) { return fail(e); }
       });
 
     server.tool("run_command",

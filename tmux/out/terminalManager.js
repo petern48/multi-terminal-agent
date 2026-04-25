@@ -62,7 +62,7 @@ class TerminalManager {
         this.entries.set(name2, { name: name2, target: `${sid}:0.1`, alive: true });
         return `Created terminals "${name1}" (left) and "${name2}" (right) — attach with: tmux attach -t ${sid}`;
     }
-    async createSshPair(outsideName, insideName, connectCommand, cwd) {
+    async createSshPair(outsideName, insideName, connectCommand, cwd, ports) {
         const sid = this.sid(outsideName);
         if (await this.sessionExists(sid)) {
             await execFile("tmux", ["kill-session", "-t", sid]);
@@ -78,9 +78,12 @@ class TerminalManager {
         await execFile("tmux", ["select-pane", "-t", `${sid}:0.0`, "-T", outsideName]);
         await execFile("tmux", ["select-pane", "-t", `${sid}:0.1`, "-T", insideName]);
         await execFile("tmux", ["send-keys", "-t", `${sid}:0.1`, connectCommand, "Enter"]);
-        this.entries.set(outsideName, { name: outsideName, target: `${sid}:0.0`, alive: true, role: "outside" });
-        this.entries.set(insideName, { name: insideName, target: `${sid}:0.1`, alive: true, role: "inside" });
-        return `Created SSH pair:\n  outside: "${outsideName}" (local commands)\n  inside:  "${insideName}" (runs inside the remote/container)\n\nTo view both panes, run:\n  tmux attach -t ${sid}`;
+        this.entries.set(outsideName, { name: outsideName, target: `${sid}:0.0`, alive: true, role: "outside", ports });
+        this.entries.set(insideName, { name: insideName, target: `${sid}:0.1`, alive: true, role: "inside", ports });
+        const portsSummary = ports && ports.length > 0
+            ? `\n  ports:   ${ports.map((p) => `inside:${p.inside} → outside:${p.outside}`).join(", ")}`
+            : "";
+        return `Created SSH pair:\n  outside: "${outsideName}" (local commands)\n  inside:  "${insideName}" (runs inside the remote/container)${portsSummary}\n\nTo view both panes, run:\n  tmux attach -t ${sid}`;
     }
     async runCommand(name, command, timeoutMs = 30000) {
         const entry = this.getAlive(name);
@@ -137,7 +140,7 @@ class TerminalManager {
             const alive = liveSessions.has(sessionName);
             if (entry.alive !== alive)
                 entry.alive = alive;
-            return { name, alive, role: entry.role };
+            return { name, alive, role: entry.role, ports: entry.ports };
         });
     }
     async closeTerminal(name) {

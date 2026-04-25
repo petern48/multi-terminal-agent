@@ -48,10 +48,11 @@ class MCPServer {
             inside_name: zod_1.z.string().describe("Name for the remote/container (inside) pane"),
             connect_command: zod_1.z.string().describe('Command to connect to the remote, e.g. "ssh user@host", "docker exec -it mycontainer bash", "kubectl exec -it mypod -- bash"'),
             cwd: zod_1.z.string().optional().describe("Working directory for the outside pane"),
+            ports: zod_1.z.array(zod_1.z.object({ inside: zod_1.z.number(), outside: zod_1.z.number() })).optional().describe("Port mappings between the remote and local machine. Each entry: inside = port on the remote/container, outside = port on the local machine. E.g. [{inside:8080,outside:3000}] means the app on port 8080 inside the container is reachable at localhost:3000 from outside."),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }, async ({ outside_name, inside_name, connect_command, cwd }) => {
+        }, async ({ outside_name, inside_name, connect_command, cwd, ports }) => {
             try {
-                return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd));
+                return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd, ports));
             }
             catch (e) {
                 return fail(e);
