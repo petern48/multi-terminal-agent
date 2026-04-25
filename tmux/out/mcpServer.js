@@ -21,7 +21,7 @@ class MCPServer {
 This server manages named tmux terminals and supports SSH/Docker workflows via terminal pairs.
 
 Key rules:
-- To start a long-running server, use run_command with wait_for=<health_url>. The server runs in the pane foreground (visible, stoppable with send_input C-c) and the tool returns once healthy. Never use nohup, & with sleep, or other manual daemonisation.
+- To start a long-running server, use run_command with background=true. The server runs in the pane foreground (visible, stoppable with send_input C-c). Never use nohup, & with sleep, or other manual daemonisation.
 - Before creating an SSH pair, if the user has not provided a cwd, ask for it before proceeding. Once known, use that remote context for all subsequent file references — scp destinations, absolute paths, and run_command targets should all be expressed in terms absolute paths. Never use ~ in paths.
 - Before creating an SSH pair, if the user has not specified port mappings, ask them whether any ports are exposed between the remote and the local machine.
 - If using a ssh terminal pair, always use the correct terminal (local or remote) for each command, without trying to switch to the other from the current terminal.
@@ -71,17 +71,16 @@ Key rules:
                 return fail(e);
             }
         });
-        server.tool("run_command", "Run a command in a named terminal. By default blocks until the command exits and returns output + exit code. Use background=true to fire-and-forget (returns immediately; command runs in the pane foreground). Use wait_for=<url> to start a server and block until its health URL returns 2xx — the server runs in the pane foreground and can be killed later with send_input C-c.", 
+        server.tool("run_command", "Run a command in a named terminal. By default blocks until the command exits and returns output + exit code. Use background=true to fire-and-forget — the command runs in the pane foreground and can be stopped later with send_input C-c.", 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {
             name: zod_1.z.string(),
             command: zod_1.z.string(),
-            timeout: zod_1.z.number().optional().describe("Timeout ms (default 30000). For wait_for, this is the max time to wait for the health check."),
+            timeout: zod_1.z.number().optional().describe("Timeout ms (default 30000)"),
             background: zod_1.z.boolean().optional().describe("If true, start the command and return immediately without waiting for it to exit."),
-            wait_for: zod_1.z.string().optional().describe("Health-check URL: start the command and poll this URL until it returns 2xx, then return. Use for servers (e.g. wait_for='http://localhost:8000/health')."),
-        }, async ({ name, command, timeout, background, wait_for }) => {
+        }, async ({ name, command, timeout, background }) => {
             try {
-                return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout, { background, wait_for })));
+                return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout, { background })));
             }
             catch (e) {
                 return fail(e);

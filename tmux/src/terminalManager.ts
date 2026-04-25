@@ -150,32 +150,13 @@ export class TerminalManager {
     name: string,
     command: string,
     timeoutMs = 30000,
-    opts?: { background?: boolean; wait_for?: string },
+    opts?: { background?: boolean },
   ): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
 
-    if (opts?.background || opts?.wait_for) {
+    if (opts?.background) {
       // Start the command in the pane foreground — visible, killable with send_input C-c.
-      // We don't append & so the server is the active foreground process in the pane.
       await execFile("tmux", ["send-keys", "-t", entry.target, command, "Enter"]);
-
-      if (opts?.wait_for) {
-        const url = opts.wait_for;
-        const deadline = Date.now() + timeoutMs;
-        let lastErr = "";
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 500));
-          try {
-            const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
-            if (res.ok) return { output: `Server ready at ${url}`, exitCode: 0 };
-            lastErr = `HTTP ${res.status}`;
-          } catch (e) {
-            lastErr = e instanceof Error ? e.message : String(e);
-          }
-        }
-        return { output: `Timed out after ${timeoutMs}ms waiting for ${url} (last: ${lastErr})`, exitCode: 1 };
-      }
-
       return { output: "Command started (running in terminal foreground)", exitCode: undefined };
     }
 
