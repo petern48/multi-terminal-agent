@@ -7,6 +7,34 @@ const path_1 = require("path");
 const os_1 = require("os");
 const util_1 = require("util");
 const execFile = (0, util_1.promisify)(child_process_1.execFile);
+const REMOTE_SCP = /^[^/\s]+@[^:\s]+:(.+)$/;
+const REMOTE_PATH_HAS_TILDE = /^~\//; // we only rewrite ~/foo, not a bare ~
+/**
+ * scp(1) passes paths to the sftp server, which typically expands `~` to the account
+ * home from the password database — not the interactive $HOME (e.g. ML platforms set
+ * HOME to a workspace in profile). We probe a login shell over SSH to match what most
+ * users expect from `~` in their session.
+ */
+async function resolveTildeInRemoteScpPath(userAtHost, remotePath) {
+    if (!REMOTE_PATH_HAS_TILDE.test(remotePath))
+        return remotePath;
+    // bash -l -c "printf %s \"$HOME\""
+    const homeProbe = "bash -l -c " + JSON.stringify('printf %s "$HOME"');
+    const { stdout } = await execFile("ssh", [
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=20",
+        userAtHost,
+        homeProbe,
+    ]).catch(() => ({ stdout: "" }));
+    const home = stdout.trim();
+    if (!home)
+        return remotePath;
+    // remotePath is ~/relpath; drop ~ to get /relpath, then home + that suffix (POSIX join)
+    return home + remotePath.slice(1);
+}
 function stripAnsi(str) {
     // eslint-disable-next-line no-control-regex
     return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1B\][^\x07]*\x07/g, "");
@@ -107,8 +135,19 @@ class TerminalManager {
             const output = (startIdx !== -1 && endIdx > startIdx)
                 ? lines.slice(startIdx + 1, endIdx).join("\n").trim()
                 : lines.slice(Math.max(0, endIdx - 100), endIdx).join("\n").trim();
-            const match = lines[endIdx].match(/:(\d+)$/);
-            const exitCode = match ? parseInt(match[1], 10) : undefined;
+            // capture-pane is width-wrapped, so the echoed "__MTA_END_…__:0" can split
+            // across display lines. Join a short window and match the full marker+code.
+            const endWindow = lines
+                .slice(endIdx, Math.min(lines.length, endIdx + 4))
+                .join("");
+            const exitRe = new RegExp(endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ":(\\d+)");
+            const exitM = endWindow.match(exitRe);
+            const lineM = (lines[endIdx] ?? "").match(/:(\d+)$/);
+            const exitCode = exitM
+                ? parseInt(exitM[1], 10)
+                : lineM
+                    ? parseInt(lineM[1], 10)
+                    : undefined;
             return { output, exitCode };
         }
         return { output: `(timed out after ${timeoutMs}ms)`, exitCode: undefined };
@@ -156,13 +195,44 @@ class TerminalManager {
         this.entries.delete(name);
         return `Closed terminal "${name}"`;
     }
-    async writeFile(path, content) {
+    async writeFile(path, content, options) {
+        if (options?.target_terminal) {
+            if (/^[^/\s]+@[^:\s]+:/.test(path)) {
+                throw new Error("When target_terminal is set, path is a local path in that session (not user@host:...)");
+            }
+            const b64 = Buffer.from(content, "utf8").toString("base64");
+            const py = [
+                "import base64,os,pathlib; p=os.path.expanduser(",
+                JSON.stringify(path),
+                "); b=",
+                JSON.stringify(b64),
+                "; pathlib.Path(p).parent.mkdir(parents=True, exist_ok=True); open(p,'wb').write(base64.b64decode(b))",
+            ].join("");
+            const command = "python3 -c " + JSON.stringify(py);
+            const { exitCode, output } = await this.runCommand(options.target_terminal, command, 120000);
+            if (exitCode == null) {
+                throw new Error(`write via ${options.target_terminal} could not parse exit status (tmux capture wrapped oddly): ${output || "(no output)"}`);
+            }
+            if (exitCode !== 0) {
+                throw new Error(`write via ${options.target_terminal} failed (exit ${exitCode}): ${output || "(no output)"}`);
+            }
+            const lines = content.split("\n").length;
+            return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}" in terminal "${options.target_terminal}" (session HOME)`;
+        }
         const tmpPath = (0, path_1.resolve)((0, os_1.tmpdir)(), `mta_wf_${uid()}`);
         await (0, promises_1.writeFile)(tmpPath, content, "utf8");
+        let effectivePath = path;
         try {
             const isRemote = /^[^/\s]+@[^:\s]+:/.test(path); // user@host:/path
             if (isRemote) {
-                await execFile("scp", [tmpPath, path]);
+                const m = path.match(REMOTE_SCP);
+                if (m) {
+                    const uAtH = path.slice(0, path.indexOf(":"));
+                    const remotePath = m[1];
+                    const resolvedRemote = await resolveTildeInRemoteScpPath(uAtH, remotePath);
+                    effectivePath = resolvedRemote === remotePath ? path : `${uAtH}:${resolvedRemote}`;
+                }
+                await execFile("scp", [tmpPath, effectivePath]);
             }
             else {
                 const abs = (0, path_1.resolve)(path);
@@ -174,7 +244,8 @@ class TerminalManager {
             await (0, promises_1.unlink)(tmpPath).catch(() => { });
         }
         const lines = content.split("\n").length;
-        return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"`;
+        const note = effectivePath !== path ? ` (remote ~ resolved to a login-style HOME, scp target: ${effectivePath})` : "";
+        return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"${note}`;
     }
     getAlive(name) {
         const entry = this.entries.get(name);
