@@ -42,6 +42,16 @@ function stripAnsi(str) {
 function uid() {
     return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
+// Inject -L flags for any ports not already forwarded. Only applies to ssh commands.
+function injectSshPortForwarding(command, ports) {
+    if (!ports.length || !/^\s*ssh\s/.test(command))
+        return command;
+    const missing = ports.filter((p) => !command.includes(`-L ${p.local}:`));
+    if (!missing.length)
+        return command;
+    const flags = missing.map((p) => `-L ${p.local}:localhost:${p.remote}`).join(" ");
+    return command.replace(/^(\s*ssh\s)/, `$1${flags} `);
+}
 class TerminalManager {
     entries = new Map();
     static PREFIX = "mta_";
@@ -105,7 +115,8 @@ class TerminalManager {
         await execFile("tmux", splitArgs);
         await execFile("tmux", ["select-pane", "-t", `${sid}:0.0`, "-T", localName]);
         await execFile("tmux", ["select-pane", "-t", `${sid}:0.1`, "-T", remoteName]);
-        await execFile("tmux", ["send-keys", "-t", `${sid}:0.1`, connectCommand, "Enter"]);
+        const effectiveCommand = ports ? injectSshPortForwarding(connectCommand, ports) : connectCommand;
+        await execFile("tmux", ["send-keys", "-t", `${sid}:0.1`, effectiveCommand, "Enter"]);
         this.entries.set(localName, { name: localName, target: `${sid}:0.0`, alive: true, role: "local", ports });
         this.entries.set(remoteName, { name: remoteName, target: `${sid}:0.1`, alive: true, role: "remote", ports });
         const portsSummary = ports && ports.length > 0
