@@ -73,6 +73,14 @@ class TerminalManager {
         terminal.show();
         return `Created terminal "${name}"`;
     }
+    createTerminalPair(name1, name2, cwd) {
+        const t1 = vscode.window.createTerminal({ name: name1, cwd });
+        this.terminals.set(name1, { terminal: t1, outputBuffer: [], alive: true });
+        const t2 = vscode.window.createTerminal({ name: name2, cwd, location: { parentTerminal: t1 } });
+        this.terminals.set(name2, { terminal: t2, outputBuffer: [], alive: true });
+        t1.show();
+        return `Created terminals "${name1}" (left) and "${name2}" (right) side by side`;
+    }
     sendCommand(name, command) {
         const entry = this.getAlive(name);
         entry.terminal.show(true);

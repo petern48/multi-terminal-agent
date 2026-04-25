@@ -22,13 +22,26 @@ class MCPServer {
     }
     start(port) {
         const server = new mcp_js_1.McpServer({ name: "multi-terminal", version: "1.0.0" });
-        server.tool("create_terminal", "Create a named terminal tab in VS Code", {
+        server.tool("create_terminal", "Create a single named terminal tab in VS Code", {
             name: zod_1.z.string().describe("Unique name for the terminal"),
             cwd: zod_1.z.string().optional().describe("Working directory path"),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }, async ({ name, cwd }) => {
             try {
                 return ok(this.tm.createTerminal(name, cwd));
+            }
+            catch (e) {
+                return fail(e);
+            }
+        });
+        server.tool("create_terminal_pair", "Create two named terminals side by side in a split view. Prefer this over calling create_terminal twice.", {
+            name1: zod_1.z.string().describe("Name for the left terminal"),
+            name2: zod_1.z.string().describe("Name for the right terminal"),
+            cwd: zod_1.z.string().optional().describe("Working directory for both terminals"),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }, async ({ name1, name2, cwd }) => {
+            try {
+                return ok(this.tm.createTerminalPair(name1, name2, cwd));
             }
             catch (e) {
                 return fail(e);
