@@ -97,13 +97,16 @@ Creates a single named terminal tab.
 
 ---
 
-### `send_command`
-Sends a shell command to a named terminal. Appends a newline to execute immediately.
+### `run_command`
+Runs a command in a named terminal, waits for it to finish, and returns the full output along with the exit code. Requires shell integration (enabled by default in bash/zsh). Prefer this over `send_command` + `read_output`.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `name` | string | Target terminal name |
 | `command` | string | Shell command to run |
+| `timeout` | number? | Timeout in ms (default: 30000) |
+
+Returns `{ output: string, exitCode: number | undefined }`.
 
 ---
 
@@ -151,13 +154,10 @@ A fullstack app where the backend and frontend need to run concurrently. The age
 
 ```
 Agent: create_terminal_pair("server", "client")
-Agent: send_command("server", "cd backend && npm start")
-Agent: send_command("client", "cd frontend && npm run dev")
-Agent: read_output("server", 20)   # check server started cleanly
-Agent: read_output("client", 20)   # check client compiled
+Agent: run_command("server", "cd backend && npm start")   # → { output: "> Listening on :3000", exitCode: 0 }
+Agent: run_command("client", "cd frontend && npm run dev") # → { output: "> Compiled successfully", exitCode: 0 }
 # ... later, after a code change ...
-Agent: send_command("client", "npm run dev")   # restart just the client
-Agent: read_output("client", 30)               # verify it came back up
+Agent: run_command("client", "npm run dev")   # restart just the client, full output returned
 ```
 
 You see both processes running side by side the entire time.
@@ -170,11 +170,10 @@ Debugging an issue that only reproduces on a remote server. The agent maintains 
 
 ```
 Agent: create_terminal_pair("local", "remote")
-Agent: send_command("remote", "ssh user@staging-server")
-Agent: send_command("local", "npm run build && scp dist/ user@staging-server:~/app/")
-Agent: send_command("remote", "pm2 restart app && pm2 logs app --lines 50")
-Agent: read_output("remote", 50)   # read crash logs
-# agent edits the code, redeploys, checks logs again
+Agent: run_command("remote", "ssh user@staging-server")
+Agent: run_command("remote", "cat logs/error.log | tail -30")  # → full log output, no line count guessing
+Agent: run_command("local", "npm run build && scp -r dist/ user@staging:/home/deploy/app/")
+Agent: run_command("remote", "pm2 restart app")   # → { exitCode: 0 } confirms success
 ```
 
 ---
@@ -185,12 +184,10 @@ Running an integration test suite that needs a live server. The agent starts the
 
 ```
 Agent: create_terminal_pair("server", "tests")
-Agent: send_command("server", "npm start")
-Agent: read_output("server", 10)               # wait for "listening on port..."
-Agent: send_command("tests", "npm test")
-Agent: read_output("tests", 100)               # read test results
+Agent: run_command("server", "npm start")
+Agent: run_command("tests", "npm test")                          # → full test output returned when done
 # agent fixes a failing test, reruns without restarting the server
-Agent: send_command("tests", "npm test -- --grep 'auth'")
+Agent: run_command("tests", "npm test -- --grep 'auth'")
 ```
 
 ---
@@ -198,5 +195,6 @@ Agent: send_command("tests", "npm test -- --grep 'auth'")
 ## Notes
 
 - The MCP server runs only while the Extension Development Host (F5) is open. For permanent use, package the extension as a `.vsix` and install it.
-- `read_output` captures output from commands run while shell integration is active. Long-running process logs (e.g. a dev server) are captured as they stream in.
-- The agent pulls output on demand — it does not receive terminal events passively. For time-sensitive output, instruct the agent to call `read_output` immediately after a command.
+- `run_command` requires shell integration, which is active by default in bash and zsh. If it reports "not active", run any command manually in that terminal first (pressing Enter is enough).
+- `run_command` is best for commands that terminate (build, test, git, ls). For long-running processes like dev servers, use `send_input` to interact and `read_output` to sample recent output.
+- The agent pulls output on demand — it does not receive terminal events passively.
