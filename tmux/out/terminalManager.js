@@ -129,7 +129,10 @@ class TerminalManager {
         if (opts?.background) {
             // Start the command in the pane foreground — visible, killable with send_input C-c.
             await execFile("tmux", ["send-keys", "-t", entry.target, command, "Enter"]);
-            return { output: "Command started (running in terminal foreground)", exitCode: undefined };
+            // Wait briefly then snapshot the pane so the agent can verify startup output.
+            await new Promise((r) => setTimeout(r, 500));
+            const snapshot = await this.readOutput(name, 50);
+            return { output: snapshot, exitCode: undefined };
         }
         const id = uid();
         const startMarker = `__MTA_START_${id}__`;
