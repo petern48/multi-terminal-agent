@@ -23,6 +23,7 @@ This server manages named tmux terminals and supports SSH/Docker workflows via t
 
 Key rules:
 - Whenever you're asked to run a server, run it synchronously (not in the background by default)
+- Before creating an SSH pair, if the user has not provided a cwd, ask for it before proceeding. Once known, use that remote context for all subsequent file references — scp destinations, absolute paths, and run_command targets should all be expressed in terms absolute paths. Never use ~ in paths.
 - Before creating an SSH pair, if the user has not specified port mappings, ask them whether any ports are exposed between the remote and the local machine.
 - If using a ssh terminal pair, always use the correct terminal (outside of inside) for each command, without trying to switch to the other from the current terminal.
 - Local commands (file writes, scp, docker cp, curl) always go in the outside terminal. Remote/container commands always go in the inside terminal.
