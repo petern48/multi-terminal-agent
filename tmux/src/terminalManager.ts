@@ -10,6 +10,7 @@ interface TmuxEntry {
   name: string;
   target: string; // tmux address: session name or "session:window.pane"
   alive: boolean;
+  role?: "outside" | "inside";
 }
 
 function stripAnsi(str: string): string {
@@ -74,6 +75,30 @@ export class TerminalManager {
     return `Created terminals "${name1}" (left) and "${name2}" (right) — attach with: tmux attach -t ${sid}`;
   }
 
+  async createSshPair(outsideName: string, insideName: string, connectCommand: string, cwd?: string): Promise<string> {
+    const sid = this.sid(outsideName);
+    if (await this.sessionExists(sid)) {
+      await execFile("tmux", ["kill-session", "-t", sid]);
+    }
+    const args = ["new-session", "-d", "-s", sid];
+    if (cwd) args.push("-c", cwd);
+    await execFile("tmux", args);
+
+    const splitArgs = ["split-window", "-h", "-t", `${sid}:0`];
+    if (cwd) splitArgs.push("-c", cwd);
+    await execFile("tmux", splitArgs);
+
+    await execFile("tmux", ["select-pane", "-t", `${sid}:0.0`, "-T", outsideName]);
+    await execFile("tmux", ["select-pane", "-t", `${sid}:0.1`, "-T", insideName]);
+
+    await execFile("tmux", ["send-keys", "-t", `${sid}:0.1`, connectCommand, "Enter"]);
+
+    this.entries.set(outsideName, { name: outsideName, target: `${sid}:0.0`, alive: true, role: "outside" });
+    this.entries.set(insideName, { name: insideName, target: `${sid}:0.1`, alive: true, role: "inside" });
+
+    return `Created SSH pair:\n  outside: "${outsideName}" (local commands)\n  inside:  "${insideName}" (runs inside the remote/container)\n\nTo view both panes, run:\n  tmux attach -t ${sid}`;
+  }
+
   async runCommand(name: string, command: string, timeoutMs = 30000): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
     const id = uid();
@@ -136,7 +161,7 @@ export class TerminalManager {
       const sessionName = entry.target.split(":")[0];
       const alive = liveSessions.has(sessionName);
       if (entry.alive !== alive) entry.alive = alive;
-      return { name, alive };
+      return { name, alive, role: entry.role };
     });
   }
 

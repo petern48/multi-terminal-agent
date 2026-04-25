@@ -43,6 +43,20 @@ class MCPServer {
                 return fail(e);
             }
         });
+        server.tool("create_ssh_pair", "Create a split-pane terminal pair for SSH/Docker workflows. The 'outside' pane is a local shell; the 'inside' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the outside terminal and remote/container commands in the inside terminal.", {
+            outside_name: zod_1.z.string().describe("Name for the local (outside) pane"),
+            inside_name: zod_1.z.string().describe("Name for the remote/container (inside) pane"),
+            connect_command: zod_1.z.string().describe('Command to connect to the remote, e.g. "ssh user@host", "docker exec -it mycontainer bash", "kubectl exec -it mypod -- bash"'),
+            cwd: zod_1.z.string().optional().describe("Working directory for the outside pane"),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }, async ({ outside_name, inside_name, connect_command, cwd }) => {
+            try {
+                return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd));
+            }
+            catch (e) {
+                return fail(e);
+            }
+        });
         server.tool("run_command", "Run a command in a named terminal and wait for it to finish, returning full output and exit code. Works in any shell environment including local, SSH, and Docker sessions.", 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { name: zod_1.z.string(), command: zod_1.z.string(), timeout: zod_1.z.number().optional().describe("Timeout ms, default 30000") }, async ({ name, command, timeout }) => {
