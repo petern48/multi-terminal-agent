@@ -18,7 +18,21 @@ export class MCPServer {
   constructor(private tm: TerminalManager) {}
 
   async start(): Promise<void> {
-    const server = new McpServer({ name: "multi-terminal-tmux", version: "1.0.0" });
+    const instructions = `
+This server manages named tmux terminals and supports SSH/Docker workflows via terminal pairs.
+
+Key rules:
+- Whenever you're asked to run a server, run it synchronously (not in the background by default)
+- Before creating an SSH pair, if the user has not specified port mappings, ask them whether any ports are exposed between the remote and the local machine.
+- If using a ssh terminal pair, always use the correct terminal (outside of inside) for each command, without trying to switch to the other from the current terminal.
+- Local commands (file writes, scp, docker cp, curl) always go in the outside terminal. Remote/container commands always go in the inside terminal.
+- Port bindings are stored on the terminal entry. Use list_terminals to look them up when deciding which host/port to target.
+    `.trim();
+
+    const server = new McpServer(
+      { name: "multi-terminal-tmux", version: "1.0.0" },
+      { instructions },
+    );
 
     server.tool("create_terminal", "Create a named tmux session. Attach with: tmux attach -t mta_{name}", {
       name: z.string().describe("Unique name for the terminal"),
@@ -38,7 +52,7 @@ export class MCPServer {
     });
 
     server.tool("create_ssh_pair",
-      "Create a split-pane terminal pair for SSH/Docker workflows. The 'outside' pane is a local shell; the 'inside' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the outside terminal and remote/container commands in the inside terminal.",
+      "Create a split-pane terminal pair for SSH/Docker workflows. The 'outside' pane is a local shell; the 'inside' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the outside terminal and remote/container commands in the inside terminal. If the user has not already specified port mappings, ask them whether any ports are exposed between the remote and local machine before calling this tool.",
       {
         outside_name: z.string().describe("Name for the local (outside) pane"),
         inside_name: z.string().describe("Name for the remote/container (inside) pane"),
