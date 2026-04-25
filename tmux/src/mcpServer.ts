@@ -54,14 +54,14 @@ Key rules:
     server.tool("create_ssh_pair",
       "Create a split-pane terminal pair for SSH/Docker workflows. The 'outside' pane is a local shell; the 'inside' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the outside terminal and remote/container commands in the inside terminal. If the user has not already specified port mappings, ask them whether any ports are exposed between the remote and local machine before calling this tool.",
       {
-        outside_name: z.string().describe("Name for the local (outside) pane"),
-        inside_name: z.string().describe("Name for the remote/container (inside) pane"),
+        outside_name: z.string().optional().describe("Name for the local (outside) pane (default: 'outside')"),
+        inside_name: z.string().optional().describe("Name for the remote/container (inside) pane (default: 'inside')"),
         connect_command: z.string().describe('Command to connect to the remote, e.g. "ssh user@host", "docker exec -it mycontainer bash", "kubectl exec -it mypod -- bash"'),
         cwd: z.string().optional().describe("Working directory for the outside pane"),
         ports: z.array(z.object({ inside: z.number(), outside: z.number() })).optional().describe("Port mappings between the remote and local machine. Each entry: inside = port on the remote/container, outside = port on the local machine. E.g. [{inside:8080,outside:3000}] means the app on port 8080 inside the container is reachable at localhost:3000 from outside."),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any, async ({ outside_name, inside_name, connect_command, cwd, ports }: { outside_name: string; inside_name: string; connect_command: string; cwd?: string; ports?: { inside: number; outside: number }[] }): Promise<ToolResult> => {
-        try { return ok(await this.tm.createSshPair(outside_name, inside_name, connect_command, cwd, ports)); } catch (e) { return fail(e); }
+      } as any, async ({ outside_name, inside_name, connect_command, cwd, ports }: { outside_name?: string; inside_name?: string; connect_command: string; cwd?: string; ports?: { inside: number; outside: number }[] }): Promise<ToolResult> => {
+        try { return ok(await this.tm.createSshPair(outside_name ?? "outside", inside_name ?? "inside", connect_command, cwd, ports)); } catch (e) { return fail(e); }
       });
 
     server.tool("run_command",
