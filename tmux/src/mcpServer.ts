@@ -25,8 +25,8 @@ Key rules:
 - Whenever you're asked to run a server, run it synchronously (not in the background by default)
 - Before creating an SSH pair, if the user has not provided a cwd, ask for it before proceeding. Once known, use that remote context for all subsequent file references — scp destinations, absolute paths, and run_command targets should all be expressed in terms absolute paths. Never use ~ in paths.
 - Before creating an SSH pair, if the user has not specified port mappings, ask them whether any ports are exposed between the remote and the local machine.
-- If using a ssh terminal pair, always use the correct terminal (outside of inside) for each command, without trying to switch to the other from the current terminal.
-- Local commands (file writes, scp, docker cp, curl) always go in the outside terminal. Remote/container commands always go in the inside terminal.
+- If using a ssh terminal pair, always use the correct terminal (local or remote) for each command, without trying to switch to the other from the current terminal.
+- Local commands (file writes, scp, docker cp, curl) always go in the local terminal. Remote/container commands always go in the remote terminal.
 - Port bindings are stored on the terminal entry. Use list_terminals to look them up when deciding which host/port to target.
     `.trim();
 
@@ -53,16 +53,16 @@ Key rules:
     });
 
     server.tool("create_ssh_pair",
-      "Create a split-pane terminal pair for SSH/Docker workflows. The 'outside' pane is a local shell; the 'inside' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the outside terminal and remote/container commands in the inside terminal. If the user has not already specified port mappings, ask them whether any ports are exposed between the remote and local machine before calling this tool.",
+      "Create a split-pane terminal pair for SSH/Docker workflows. The 'local' pane is a local shell; the 'remote' pane automatically runs the connect command (ssh, docker exec, etc.). Use list_terminals to see roles — always run local commands (scp, write_file) in the local terminal and remote/container commands in the remote terminal. If the user has not already specified port mappings, ask them whether any ports are exposed between the remote and local machine before calling this tool.",
       {
-        outside_name: z.string().optional().describe("Name for the local (outside) pane (default: 'outside')"),
-        inside_name: z.string().optional().describe("Name for the remote/container (inside) pane (default: 'inside')"),
+        local_name: z.string().optional().describe("Name for the local pane (default: 'local')"),
+        remote_name: z.string().optional().describe("Name for the remote/container pane (default: 'remote')"),
         connect_command: z.string().describe('Command to connect to the remote, e.g. "ssh user@host", "docker exec -it mycontainer bash", "kubectl exec -it mypod -- bash"'),
-        cwd: z.string().optional().describe("Working directory for the outside pane"),
-        ports: z.array(z.object({ inside: z.number(), outside: z.number() })).optional().describe("Port mappings between the remote and local machine. Each entry: inside = port on the remote/container, outside = port on the local machine. E.g. [{inside:8080,outside:3000}] means the app on port 8080 inside the container is reachable at localhost:3000 from outside."),
+        cwd: z.string().optional().describe("Working directory for the local pane"),
+        ports: z.array(z.object({ remote: z.number(), local: z.number() })).optional().describe("Port mappings between the remote and local machine. Each entry: remote = port on the remote/container, local = port on the local machine. E.g. [{remote:8080,local:3000}] means the app on port 8080 on the remote is reachable at localhost:3000 locally."),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any, async ({ outside_name, inside_name, connect_command, cwd, ports }: { outside_name?: string; inside_name?: string; connect_command: string; cwd?: string; ports?: { inside: number; outside: number }[] }): Promise<ToolResult> => {
-        try { return ok(await this.tm.createSshPair(outside_name ?? "outside", inside_name ?? "inside", connect_command, cwd, ports)); } catch (e) { return fail(e); }
+      } as any, async ({ local_name, remote_name, connect_command, cwd, ports }: { local_name?: string; remote_name?: string; connect_command: string; cwd?: string; ports?: { remote: number; local: number }[] }): Promise<ToolResult> => {
+        try { return ok(await this.tm.createSshPair(local_name ?? "local", remote_name ?? "remote", connect_command, cwd, ports)); } catch (e) { return fail(e); }
       });
 
     server.tool("run_command",

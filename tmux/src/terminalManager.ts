@@ -35,15 +35,15 @@ async function resolveTildeInRemoteScpPath(userAtHost: string, remotePath: strin
 }
 
 interface PortMapping {
-  inside: number;  // port as seen from inside the remote/container
-  outside: number; // port as seen from the local machine
+  remote: number; // port as seen from the remote/container
+  local: number;  // port as seen from the local machine
 }
 
 interface TmuxEntry {
   name: string;
   target: string; // tmux address: session name or "session:window.pane"
   alive: boolean;
-  role?: "outside" | "inside";
+  role?: "local" | "remote";
   ports?: PortMapping[]; // only set on ssh pair entries
 }
 
@@ -109,8 +109,8 @@ export class TerminalManager {
     return `Created terminals "${name1}" (left) and "${name2}" (right) — attach with: tmux attach -t ${sid}`;
   }
 
-  async createSshPair(outsideName: string, insideName: string, connectCommand: string, cwd?: string, ports?: PortMapping[]): Promise<string> {
-    const sid = this.sid(outsideName);
+  async createSshPair(localName: string, remoteName: string, connectCommand: string, cwd?: string, ports?: PortMapping[]): Promise<string> {
+    const sid = this.sid(localName);
     if (await this.sessionExists(sid)) {
       await execFile("tmux", ["kill-session", "-t", sid]);
     }
@@ -122,18 +122,18 @@ export class TerminalManager {
     if (cwd) splitArgs.push("-c", cwd);
     await execFile("tmux", splitArgs);
 
-    await execFile("tmux", ["select-pane", "-t", `${sid}:0.0`, "-T", outsideName]);
-    await execFile("tmux", ["select-pane", "-t", `${sid}:0.1`, "-T", insideName]);
+    await execFile("tmux", ["select-pane", "-t", `${sid}:0.0`, "-T", localName]);
+    await execFile("tmux", ["select-pane", "-t", `${sid}:0.1`, "-T", remoteName]);
 
     await execFile("tmux", ["send-keys", "-t", `${sid}:0.1`, connectCommand, "Enter"]);
 
-    this.entries.set(outsideName, { name: outsideName, target: `${sid}:0.0`, alive: true, role: "outside", ports });
-    this.entries.set(insideName, { name: insideName, target: `${sid}:0.1`, alive: true, role: "inside", ports });
+    this.entries.set(localName, { name: localName, target: `${sid}:0.0`, alive: true, role: "local", ports });
+    this.entries.set(remoteName, { name: remoteName, target: `${sid}:0.1`, alive: true, role: "remote", ports });
 
     const portsSummary = ports && ports.length > 0
-      ? `\n  ports:   ${ports.map((p) => `inside:${p.inside} → outside:${p.outside}`).join(", ")}`
+      ? `\n  ports:   ${ports.map((p) => `remote:${p.remote} → local:${p.local}`).join(", ")}`
       : "";
-    return `Created SSH pair:\n  outside: "${outsideName}" (local commands)\n  inside:  "${insideName}" (runs inside the remote/container)${portsSummary}\n\nTo view both panes, run:\n  tmux attach -t ${sid}`;
+    return `Created SSH pair:\n  local:  "${localName}" (local commands)\n  remote: "${remoteName}" (runs inside the remote/container)${portsSummary}\n\nTo view both panes, run:\n  tmux attach -t ${sid}`;
   }
 
   async runCommand(name: string, command: string, timeoutMs = 30000): Promise<{ output: string; exitCode: number | undefined }> {
