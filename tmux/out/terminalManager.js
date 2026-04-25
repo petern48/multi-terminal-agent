@@ -271,8 +271,9 @@ class TerminalManager {
         const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(py)}`, 10000);
         if (wExit !== 0)
             throw new Error(`Failed to write patch file: ${wOut}`);
-        // Display the diff in the terminal so it's visible
-        await this.runCommand(terminalName, `cat ${tmpPatch}`, 10000);
+        // Display the diff with ANSI colors: bright red for removed, bright green for added, cyan for hunks
+        const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
+        await this.runCommand(terminalName, colorize, 10000);
         // Apply: git apply first (handles a/b/ prefixes), fall back to patch -p1
         const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
         const { exitCode, output } = await this.runCommand(terminalName, `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`, 30000);
