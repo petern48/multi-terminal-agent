@@ -29,7 +29,7 @@ Two implementations — pick one:
 
 ## Use cases
 
-### Server + client iteration (e.g. ClickHouse, databases, compilers)
+### Server + client iteration (e.g. database server + client)
 
 When a bug requires recompiling a server and re-running a client test, a single-terminal agent gets stuck — it can't keep the server running while also running the client. With a terminal pair, the agent restarts the server in one pane and runs tests in the other, iterating freely without any manual intervention.
 
@@ -95,14 +95,14 @@ Agent: run_command("api", "cd backend && npm start", { background: true })
 
 ---
 
-## VS Code extension
+## VS Code Extension
 
 ### How it works
 
 The extension starts a local MCP HTTP server on `localhost:3456` when VS Code activates. Terminals are created and managed inside VS Code's terminal panel — you see every command the agent runs in real time.
 
 ```
-Agent (Claude Code / Cursor)
+Agent (VS Code Agent)
     │  MCP tool calls (HTTP)
     ▼
 MCP Server (localhost:3456)
