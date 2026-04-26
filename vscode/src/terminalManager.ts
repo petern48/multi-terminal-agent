@@ -59,8 +59,24 @@ export class TerminalManager {
     return `Created terminals "${name1}" (left) and "${name2}" (right) side by side`;
   }
 
-  async runCommand(name: string, command: string, timeoutMs = 30000): Promise<{ output: string; exitCode: number | undefined }> {
+  async runCommand(
+    name: string,
+    command: string,
+    timeoutMs = 30000,
+    opts?: { background?: boolean },
+  ): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
+
+    if (opts?.background) {
+      // Send the command without blocking — it runs in the terminal foreground.
+      // sendText triggers shell integration hooks so output is still buffered.
+      entry.terminal.sendText(command, true);
+      entry.terminal.show(false);
+      // Wait briefly then return a startup snapshot so the agent can verify the process started.
+      await new Promise((r) => setTimeout(r, 500));
+      return { output: this.readOutput(name, 50), exitCode: undefined };
+    }
+
     if (!entry.terminal.shellIntegration) {
       throw new Error(`Shell integration not active on "${name}" — run any command manually first to activate it`);
     }
@@ -107,7 +123,9 @@ export class TerminalManager {
 
   sendInput(name: string, text: string): string {
     const entry = this.getAlive(name);
-    entry.terminal.sendText(text, false);
+    // Map common control sequences so callers can use tmux-style names
+    const resolved = text === "C-c" ? "\x03" : text === "C-d" ? "\x04" : text;
+    entry.terminal.sendText(resolved, false);
     return `Sent input to "${name}"`;
   }
 

@@ -42,11 +42,16 @@ export class MCPServer {
     });
 
     server.tool("run_command",
-      "Run a command in a terminal and wait for it to finish, returning the full output. Requires shell integration (active by default in bash/zsh). Use this instead of send_command + read_output.",
+      "Run a command in a terminal. By default blocks until the command exits and returns full output + exit code (requires shell integration). Use background=true to fire-and-forget — the command runs in the terminal foreground and can be stopped with send_input('C-c').",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { name: z.string(), command: z.string(), timeout: z.number().optional().describe("Timeout ms, default 30000") } as any,
-      async ({ name, command, timeout }: { name: string; command: string; timeout?: number }): Promise<ToolResult> => {
-        try { return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout))); } catch (e) { return fail(e); }
+      {
+        name: z.string(),
+        command: z.string(),
+        timeout: z.number().optional().describe("Timeout ms (default 30000)"),
+        background: z.boolean().optional().describe("If true, start the command and return immediately with a startup snapshot. Stop later with send_input('C-c')."),
+      } as any,
+      async ({ name, command, timeout, background }: { name: string; command: string; timeout?: number; background?: boolean }): Promise<ToolResult> => {
+        try { return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout, { background }))); } catch (e) { return fail(e); }
       });
 
     // server.tool("send_command", "Send a shell command to a named terminal (executes immediately)", {
@@ -57,7 +62,7 @@ export class MCPServer {
     //   try { return ok(this.tm.sendCommand(name, command)); } catch (e) { return fail(e); }
     // });
 
-    server.tool("send_input", "Send raw text to a terminal without a newline (for interactive prompts)", {
+    server.tool("send_input", "Send raw text to a terminal without a newline. Use 'C-c' to interrupt a running process (e.g. stop a background server).", {
       name: z.string(),
       text: z.string(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
