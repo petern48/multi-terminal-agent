@@ -276,15 +276,16 @@ export class TerminalManager {
   async patchFile(terminalName: string, filepath: string, unifiedDiff: string, cwd?: string): Promise<string> {
     const tmpPatch = `/tmp/mta_patch_${randomUUID().replace(/-/g, "")}.patch`;
     const b64 = Buffer.from(unifiedDiff, "utf8").toString("base64");
+    const timeoutMs = 30_000;
 
     // Write patch to temp file via Python (avoids shell quoting issues with diff content)
     const writePy = `import base64; open(${JSON.stringify(tmpPatch)}, "wb").write(base64.b64decode(${JSON.stringify(b64)}))`;
-    const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(writePy)}`, 10_000);
+    const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(writePy)}`, timeoutMs);
     if (wExit !== 0) throw new Error(`Failed to write patch file: ${wOut}`);
 
     // Colorize diff in-terminal for visibility (bright red removed, bright green added, cyan hunks)
     const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
-    await this.runCommand(terminalName, colorize, 10_000);
+    await this.runCommand(terminalName, colorize, timeoutMs);
 
     // Apply: git apply handles a/b/ prefixes; patch -p1 as fallback
     const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";

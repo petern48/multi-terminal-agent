@@ -22,7 +22,7 @@ class MCPServer {
     }
     start(port) {
         const server = new mcp_js_1.McpServer({ name: "multi-terminal", version: "1.0.0" });
-        server.tool("create_terminal", "Create a single named terminal tab in VS Code", {
+        server.tool("create_terminal", "Create a single named terminal tab in VS Code. Once created, run all commands through this terminal via run_command rather than executing them as background tool calls.", {
             name: zod_1.z.string().describe("Unique name for the terminal"),
             cwd: zod_1.z.string().optional().describe("Working directory path"),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +34,7 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("create_ssh_pair", "Create a local/remote terminal pair. The local terminal is for local commands (scp, file writes). The remote terminal automatically runs the connect command (ssh or docker exec) so it operates inside the remote/container. Port mappings inject -L forwarding flags into ssh commands. After connect, the remote pane’s cwd is probed (or taken from optional remote_cwd) and stored on the remote terminal only; list_terminals exposes it as cwd. In-memory for this session only.", {
+        server.tool("create_ssh_pair", "Create a local/remote terminal pair. The local terminal is for local commands (scp, file writes). The remote terminal automatically runs the connect command (ssh or docker exec) so it operates inside the remote/container. Port mappings inject -L forwarding flags into ssh commands. After connect, the remote pane’s cwd is probed (or taken from optional remote_cwd) and stored on the remote terminal only; list_terminals exposes it as cwd. In-memory for this session only. Once created, run all commands through these terminals via run_command rather than executing them as background tool calls.", {
             local_name: zod_1.z.string().describe("Name for the local terminal"),
             remote_name: zod_1.z.string().describe("Name for the remote terminal"),
             connect_command: zod_1.z.string().describe("Command to connect to remote, e.g. 'ssh user@host' or 'docker exec -it container bash'"),
@@ -53,7 +53,7 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("create_terminal_pair", "Create two named terminals side by side in a split view. Prefer this over calling create_terminal twice.", {
+        server.tool("create_terminal_pair", "Create two named terminals side by side in a split view. Prefer this over calling create_terminal twice. Once created, run all commands through these terminals via run_command rather than executing them as background tool calls.", {
             name1: zod_1.z.string().describe("Name for the left terminal"),
             name2: zod_1.z.string().describe("Name for the right terminal"),
             cwd: zod_1.z.string().optional().describe("Working directory for both terminals"),
