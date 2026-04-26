@@ -1,38 +1,7 @@
 import { execFile as execFileCb } from "child_process";
-import { writeFile, unlink, mkdir, rename } from "fs/promises";
-import { resolve, dirname } from "path";
-import { tmpdir } from "os";
 import { promisify } from "util";
 
 const execFile = promisify(execFileCb);
-
-const REMOTE_SCP = /^[^/\s]+@[^:\s]+:(.+)$/;
-const REMOTE_PATH_HAS_TILDE = /^~\//; // we only rewrite ~/foo, not a bare ~
-
-/**
- * scp(1) passes paths to the sftp server, which typically expands `~` to the account
- * home from the password database — not the interactive $HOME (e.g. ML platforms set
- * HOME to a workspace in profile). We probe a login shell over SSH to match what most
- * users expect from `~` in their session.
- */
-async function resolveTildeInRemoteScpPath(userAtHost: string, remotePath: string): Promise<string> {
-  if (!REMOTE_PATH_HAS_TILDE.test(remotePath)) return remotePath;
-  // bash -l -c "printf %s \"$HOME\""
-  const homeProbe = "bash -l -c " + JSON.stringify('printf %s "$HOME"');
-  const { stdout } = await execFile("ssh", [
-    "-T",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=20",
-    userAtHost,
-    homeProbe,
-  ]).catch(() => ({ stdout: "" }));
-  const home = stdout.trim();
-  if (!home) return remotePath;
-  // remotePath is ~/relpath; drop ~ to get /relpath, then home + that suffix (POSIX join)
-  return home + remotePath.slice(1);
-}
 
 interface PortMapping {
   remote: number; // port as seen from the remote/container
@@ -253,73 +222,34 @@ export class TerminalManager {
     return `Closed terminal "${name}"`;
   }
 
-  async writeFile(
-    path: string,
-    content: string,
-    options?: { target_terminal?: string },
-  ): Promise<string> {
-    if (options?.target_terminal) {
-      if (/^[^/\s]+@[^:\s]+:/.test(path)) {
-        throw new Error("When target_terminal is set, path is a local path in that session (not user@host:...)");
+  async writeRemoteFile(terminalName: string, path: string, content: string): Promise<string> {
+    const b64 = Buffer.from(content, "utf8").toString("base64");
+    const token = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tmpFile = `/tmp/mta_write_${token}.b64`;
+
+    // b64 chars are [A-Za-z0-9+/=] — safe inside single quotes. Write in chunks so each
+    // send-keys call is short and doesn't stall the PTY input buffer.
+    const CHUNK = 4000;
+    if (b64.length === 0) {
+      await this.runCommand(terminalName, `> ${tmpFile}`, 10_000);
+    } else {
+      for (let i = 0; i < b64.length; i += CHUNK) {
+        const chunk = b64.slice(i, i + CHUNK);
+        const op = i === 0 ? ">" : ">>";
+        const { exitCode } = await this.runCommand(terminalName, `printf '%s' '${chunk}' ${op} ${tmpFile}`, 15_000);
+        if (exitCode !== 0) throw new Error(`write_remote_file: failed writing chunk at offset ${i}`);
       }
-      const b64 = Buffer.from(content, "utf8").toString("base64");
-      const py = [
-        "import base64,os,pathlib; p=os.path.expanduser(",
-        JSON.stringify(path),
-        "); b=",
-        JSON.stringify(b64),
-        "; pathlib.Path(p).parent.mkdir(parents=True, exist_ok=True); open(p,'wb').write(base64.b64decode(b))",
-      ].join("");
-      const command = "python3 -c " + JSON.stringify(py);
-      const { exitCode, output } = await this.runCommand(options.target_terminal, command, 120000);
-      if (exitCode == null) {
-        throw new Error(
-          `write via ${options.target_terminal} could not parse exit status (tmux capture wrapped oddly): ${output || "(no output)"}`,
-        );
-      }
-      if (exitCode !== 0) {
-        throw new Error(
-          `write via ${options.target_terminal} failed (exit ${exitCode}): ${output || "(no output)"}`,
-        );
-      }
-      const lines = content.split("\n").length;
-      return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}" in terminal "${options.target_terminal}" (session HOME)`;
     }
 
-    const tmpPath = resolve(tmpdir(), `mta_wf_${uid()}`);
-    await writeFile(tmpPath, content, "utf8");
-    let effectivePath = path;
-    try {
-      const isRemote = /^[^/\s]+@[^:\s]+:/.test(path); // user@host:/path
-      if (isRemote) {
-        const m = path.match(REMOTE_SCP);
-        if (m) {
-          const uAtH = path.slice(0, path.indexOf(":"));
-          const remotePath = m[1];
-          const resolvedRemote = await resolveTildeInRemoteScpPath(uAtH, remotePath);
-          effectivePath = resolvedRemote === remotePath ? path : `${uAtH}:${resolvedRemote}`;
-        }
-        await execFile("scp", [tmpPath, effectivePath]);
-      } else {
-        const abs = resolve(path);
-        await mkdir(dirname(abs), { recursive: true });
-        await rename(tmpPath, abs);
-      }
-    } finally {
-      await unlink(tmpPath).catch(() => {});
+    const py = `import base64,os,pathlib; p=os.path.expanduser(${JSON.stringify(path)}); pathlib.Path(p).parent.mkdir(parents=True,exist_ok=True); open(p,'wb').write(base64.b64decode(open('${tmpFile}').read()))`;
+    const { exitCode, output } = await this.runCommand(terminalName, "python3 -c " + JSON.stringify(py), 30_000);
+    await this.runCommand(terminalName, `rm -f ${tmpFile}`, 5_000).catch(() => {});
+
+    if (exitCode !== 0) {
+      throw new Error(`write_remote_file: decode failed (exit ${exitCode}): ${output || "(no output)"}`);
     }
     const lines = content.split("\n").length;
-    const note =
-      effectivePath !== path ? ` (remote ~ resolved to a login-style HOME, scp target: ${effectivePath})` : "";
-    return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"${note}`;
-  }
-
-  /**
-   * Same bytes as `writeFile(..., { target_terminal })` — dedicated MCP tool for remote session writes
-   * without reusing the path/scp heuristics of the generic `write_file` tool.
-   */
-  writeRemoteFile(terminalName: string, path: string, content: string): Promise<string> {
-    return this.writeFile(path, content, { target_terminal: terminalName });
+    return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}" in terminal "${terminalName}"`;
   }
 
   private getAlive(name: string): TmuxEntry {

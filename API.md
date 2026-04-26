@@ -88,7 +88,7 @@ No parameters.
 
 ---
 
-### `write_remote_file` — VS Code only
+### `write_remote_file`
 Write a file on the machine attached to a named terminal (typically the remote pane of an SSH pair). Content is base64-encoded and written via `python3`, which avoids shell-quoting issues and works for any UTF-8 content. Parent directories are created automatically. `~` is expanded in the terminal's session.
 
 | Parameter | Type | Description |
@@ -96,29 +96,6 @@ Write a file on the machine attached to a named terminal (typically the remote p
 | `terminal` | string | Terminal to write through (use the remote pane for SSH pairs) |
 | `path` | string | Absolute path on the remote machine (`~` is allowed) |
 | `content` | string | Full file content to write |
-
----
-
-### `patch_file`
-Apply a unified diff to a file through a named terminal. Writes the patch to `/tmp`, displays it with ANSI colour coding, then applies it with `git apply` (falling back to `patch -p1`).
-
-| Parameter | Type | Description |
-|---|---|---|
-| `terminal` | string | Terminal to run the patch in (use the remote pane for SSH pairs) |
-| `filepath` | string | Absolute path to the file being patched |
-| `diff` | string | Unified diff in git format (`--- a/…` / `+++ b/…`) |
-| `cwd` | string? | Repo root to run `git apply` from |
-
----
-
-### `write_file` — tmux only
-Write content to a file. For local paths, writes directly. For remote paths (`user@host:/path`), writes to a temp file then SCPs. Pass `target_terminal` to write through a named tmux pane using Python's `open()` — useful when the remote home directory differs from the passwd entry.
-
-| Parameter | Type | Description |
-|---|---|---|
-| `path` | string | Destination: local path, scp path, or path in `target_terminal`'s session |
-| `content` | string | Full file content |
-| `target_terminal` | string? | Named terminal to write through instead of scp |
 
 ---
 

@@ -109,18 +109,6 @@ Key rules:
       try { return ok(await this.tm.closeTerminal(name)); } catch (e) { return fail(e); }
     });
 
-    server.tool("write_file",
-      "Write content to a file. For local paths, writes directly. For remote paths (user@host:/path), writes to a temp file then SCPs. For user@host:~/file, ~ is resolved via a login-shell SSH probe so it matches interactive HOME (plain scp/SFTP expands ~ to the passwd home, which breaks on some hosts). Optionally set target_terminal to write through a named tmux pane with python3 (uses that shell's expanduser), e.g. the inside pane of an SSH pair.",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      {
-        path: z.string().describe("Destination: local path, scp path (user@host:/path), or path in target_terminal's session when target_terminal is set"),
-        content: z.string().describe("Full file content to write"),
-        target_terminal: z.string().optional().describe("Named terminal to write through (python3 on that pane) instead of scp — use for exact session HOME/cwd"),
-      } as any,
-      async ({ path, content, target_terminal }: { path: string; content: string; target_terminal?: string }): Promise<ToolResult> => {
-        try { return ok(await this.tm.writeFile(path, content, target_terminal ? { target_terminal } : undefined)); } catch (e) { return fail(e); }
-      });
-
     server.tool("write_remote_file",
       "Write the full file content to a path on the machine for a named tmux/SSH pane. Uses the same path as write_file with target_terminal: python3 decodes base64, creates parent dirs, expands ~. Use for new or replace — no diff format.",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
