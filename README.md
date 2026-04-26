@@ -228,21 +228,6 @@ Agent: run_command("remote", "curl -s localhost:8080/health")
 
 ---
 
-### Frontend + backend running concurrently
-
-> **User:** "Start the backend and frontend, then figure out why the login form isn't submitting. Fix it and confirm it works."
-
-```
-Agent: create_terminal_pair("api", "web")
-Agent: run_command("api", "cd backend && npm start", { background: true })
-Agent: run_command("web", "cd frontend && npm run dev", { background: true })
-... (agent makes a code change) ...
-Agent: send_input("api", "C-c")
-Agent: run_command("api", "cd backend && npm start", { background: true })
-```
-
----
-
 ## API (MCP Server Tools)
 
 Full tool reference for agents and MCP clients: **[API.md](API.md)**
