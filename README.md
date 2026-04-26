@@ -16,16 +16,14 @@ Let AI coding agents control multiple named terminal sessions simultaneously via
 ---
 
 Two implementations — pick one:
-
-| | **VS Code extension** ⭐ recommended | **tmux** |
-|---|---|---|
-| Terminals visible in | Cursor terminal panel | tmux sessions in any terminal |
-| Transport | HTTP (`localhost:3456`) | stdio |
-| Requires | Cursor | tmux (`brew install tmux`) |
-
-> **Windsurf Support Limitation:** The VS Code extension creates terminals via the VS Code Extension API, but Windsurf does not display those terminals in its UI — they run invisibly in the background. This is a Windsurf integration limitation, not a bug in the extension. In theory, the VS Code Extension should still work, but the terminal windows will not be visible in Windsurf.
+- VS Code Extension
+- CLI (tmux)
 
 ## VS Code Extension
+
+Cursor is the only IDE confirmed to have full compatibility at the time of this writing.
+
+> **Windsurf Support Limitation:** The VS Code extension creates terminals via the VS Code Extension API, but Windsurf does not display those terminals in its UI — they run invisibly in the background. This is a Windsurf integration limitation, not a bug in the extension. In theory, the VS Code Extension should still work, but the terminal windows will not be visible in Windsurf.
 
 <details>
 <summary><strong>Setup</strong></summary>
