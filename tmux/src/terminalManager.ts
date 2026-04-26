@@ -191,7 +191,7 @@ export class TerminalManager {
     return stripAnsi(stdout).trim();
   }
 
-  async listTerminals(): Promise<{ name: string; alive: boolean }[]> {
+  async listTerminals(): Promise<{ name: string; alive: boolean; role?: "local" | "remote"; ports?: PortMapping[] }[]> {
     let liveSessions: Set<string>;
     try {
       const { stdout } = await execFile("tmux", ["list-sessions", "-F", "#{session_name}"]);
