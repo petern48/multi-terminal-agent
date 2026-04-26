@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TerminalManager = void 0;
 const vscode = __importStar(require("vscode"));
+const crypto_1 = require("crypto");
 function injectSshPortForwarding(command, ports) {
     if (!ports.length || !/^\s*ssh\s/.test(command))
         return command;
@@ -65,11 +66,19 @@ function findProbableAbsPathInOutput(text) {
 class TerminalManager {
     constructor(context) {
         this.terminals = new Map();
-        // Capture output for commands run via shellIntegration.executeCommand (or sent via sendText when SI is active)
+        // Tracks executions the agent started — these must NOT be read by the event handler.
+        // TerminalShellExecution.read() is single-consumer: if the event handler claims the
+        // stream first, runCommand's for-await hangs forever waiting for data that never arrives.
+        this.agentExecutions = new Set();
         context.subscriptions.push(vscode.window.onDidStartTerminalShellExecution(async (event) => {
             const entry = this.findByTerminal(event.terminal);
             if (!entry)
                 return;
+            // Agent executions are read exclusively by runCommand — skip here to avoid
+            // claiming the single-consumer stream before runCommand can.
+            if (this.agentExecutions.has(event.execution))
+                return;
+            // User ran a command directly — buffer the output.
             const stream = event.execution.read();
             for await (const data of stream) {
                 const clean = stripAnsi(data);
@@ -80,9 +89,7 @@ class TerminalManager {
                 }
             }
         }), vscode.window.onDidEndTerminalShellExecution((event) => {
-            const entry = this.findByTerminal(event.terminal);
-            if (entry)
-                entry.blocked = false;
+            this.agentExecutions.delete(event.execution);
         }), vscode.window.onDidCloseTerminal((t) => {
             const entry = this.findByTerminal(t);
             if (entry)
@@ -96,7 +103,7 @@ class TerminalManager {
             return `Terminal "${name}" already exists and is active`;
         }
         const terminal = vscode.window.createTerminal({ name, cwd });
-        this.terminals.set(name, { terminal, outputBuffer: [], alive: true, blocked: false });
+        this.terminals.set(name, { terminal, outputBuffer: [], alive: true });
         terminal.show();
         return `Created terminal "${name}"`;
     }
@@ -112,13 +119,12 @@ class TerminalManager {
             this.terminals.delete(n);
         }
         const localTerminal = vscode.window.createTerminal({ name: localName, cwd });
-        this.terminals.set(localName, { terminal: localTerminal, outputBuffer: [], alive: true, blocked: false, role: "local", ports });
+        this.terminals.set(localName, { terminal: localTerminal, outputBuffer: [], alive: true, role: "local", ports });
         const remoteTerminal = vscode.window.createTerminal({ name: remoteName, location: { parentTerminal: localTerminal } });
         this.terminals.set(remoteName, {
             terminal: remoteTerminal,
             outputBuffer: [],
             alive: true,
-            blocked: false,
             role: "remote",
             ports,
         });
@@ -162,25 +168,29 @@ class TerminalManager {
     }
     createTerminalPair(name1, name2, cwd) {
         const t1 = vscode.window.createTerminal({ name: name1, cwd });
-        this.terminals.set(name1, { terminal: t1, outputBuffer: [], alive: true, blocked: false });
+        this.terminals.set(name1, { terminal: t1, outputBuffer: [], alive: true });
         const t2 = vscode.window.createTerminal({ name: name2, cwd, location: { parentTerminal: t1 } });
-        this.terminals.set(name2, { terminal: t2, outputBuffer: [], alive: true, blocked: false });
+        this.terminals.set(name2, { terminal: t2, outputBuffer: [], alive: true });
         t1.show();
         return `Created terminals "${name1}" (left) and "${name2}" (right) side by side`;
     }
     async runCommand(name, command, timeoutMs = 30000, opts) {
         const entry = this.getAlive(name);
         if (opts?.background) {
-            entry.blocked = true;
+            // Send the command without blocking — it runs in the terminal foreground.
+            // sendText triggers shell integration hooks so output is still buffered.
             entry.terminal.sendText(command, true);
             entry.terminal.show(false);
-            await new Promise((r) => setTimeout(r, 1000));
+            // Wait briefly then return a startup snapshot so the agent can verify the process started.
+            await new Promise((r) => setTimeout(r, 1000)); // 1 second
             return { output: this.readOutput(name, 50), exitCode: undefined };
         }
         if (!entry.terminal.shellIntegration) {
             throw new Error(`Shell integration not active on "${name}" — run any command manually first to activate it`);
         }
         const execution = entry.terminal.shellIntegration.executeCommand(command);
+        // Register before the onDidStartTerminalShellExecution event fires so the handler skips it
+        this.agentExecutions.add(execution);
         // Capture exit code from the end event matched by execution identity
         let exitCode;
         const exitCodePromise = new Promise((resolve) => {
@@ -201,6 +211,14 @@ class TerminalManager {
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error(`Command timed out after ${timeoutMs}ms`)), timeoutMs));
         const output = await Promise.race([readAll(), timeout]);
         exitCode = await Promise.race([exitCodePromise, new Promise((r) => setTimeout(() => r(undefined), 500))]);
+        // Buffer the output so readOutput() can return it after this call returns
+        if (output) {
+            const lines = output.split("\n");
+            entry.outputBuffer.push(...lines);
+            if (entry.outputBuffer.length > TerminalManager.MAX_BUFFER) {
+                entry.outputBuffer.splice(0, entry.outputBuffer.length - TerminalManager.MAX_BUFFER);
+            }
+        }
         return { output, exitCode };
     }
     // sendCommand(name: string, command: string): string {
@@ -216,9 +234,8 @@ class TerminalManager {
     // }
     sendInput(name, text) {
         const entry = this.getAlive(name);
+        // Map common control sequences so callers can use tmux-style names
         const resolved = text === "C-c" ? "\x03" : text === "C-d" ? "\x04" : text;
-        if (resolved === "\x03")
-            entry.blocked = false;
         entry.terminal.sendText(resolved, false);
         return `Sent input to "${name}"`;
     }
@@ -235,11 +252,30 @@ class TerminalManager {
         return Array.from(this.terminals.entries()).map(([name, e]) => ({
             name,
             alive: e.alive,
-            blocked: e.blocked,
             ...(e.role ? { role: e.role } : {}),
             ...(e.ports ? { ports: e.ports } : {}),
             ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
         }));
+    }
+    async patchFile(terminalName, filepath, unifiedDiff, cwd) {
+        const tmpPatch = `/tmp/mta_patch_${(0, crypto_1.randomUUID)().replace(/-/g, "")}.patch`;
+        const b64 = Buffer.from(unifiedDiff, "utf8").toString("base64");
+        const timeoutMs = 30000;
+        // Write patch to temp file via Python (avoids shell quoting issues with diff content)
+        const writePy = `import base64; open(${JSON.stringify(tmpPatch)}, "wb").write(base64.b64decode(${JSON.stringify(b64)}))`;
+        const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(writePy)}`, timeoutMs);
+        if (wExit !== 0)
+            throw new Error(`Failed to write patch file: ${wOut}`);
+        // Colorize diff in-terminal for visibility (bright red removed, bright green added, cyan hunks)
+        const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
+        await this.runCommand(terminalName, colorize, timeoutMs);
+        // Apply: git apply handles a/b/ prefixes; patch -p1 as fallback
+        const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
+        const { exitCode, output } = await this.runCommand(terminalName, `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`, 30000);
+        await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5000).catch(() => { });
+        if (exitCode !== 0)
+            throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
+        return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
     }
     closeTerminal(name) {
         const entry = this.terminals.get(name);
