@@ -1,4 +1,4 @@
-# Multi-Terminal MCP
+# Multi-Terminal Agent
 
 Let AI coding agents (Claude Code, Cursor) control multiple named terminal sessions simultaneously via the [Model Context Protocol](https://modelcontextprotocol.io).
 
@@ -39,14 +39,14 @@ When a bug requires recompiling a server and re-running a client test, a single-
 # Create side-by-side terminals one for server and one for client
 Agent: create_terminal_pair("server", "client")
 # Start the database server
-Agent: run_command("server", "./build/clickhouse-server --config server.xml", { background: true })
+Agent: run_command("server", "./build/clickhouse-server", { background: true })
 # Run the client or test
 Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
 # Kill the old database server
 Agent: send_input("server", "C-c")
-... (agent makes a code change) ...
+... (agent makes a code change locally) ...
 # Recompile source code and start the updated server
-Agent: run_command("server", "ninja -C build && ./build/clickhouse-server --config server.xml", { background: true })
+Agent: run_command("server", "ninja -C build && ./build/clickhouse-server", { background: true })
 # Re-try the client or test
 Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
 ... (continues iterating if needed)
@@ -87,7 +87,7 @@ Agent: run_command("remote", "curl -s localhost:8080/health")
 Agent: create_terminal_pair("api", "web")
 Agent: run_command("api", "cd backend && npm start", { background: true })
 Agent: run_command("web", "cd frontend && npm run dev", { background: true })
-# after a code change:
+... (agent makes a code change) ...
 Agent: send_input("api", "C-c")
 Agent: run_command("api", "cd backend && npm start", { background: true })
 ```
@@ -117,7 +117,8 @@ MCP Server (localhost:3456)
 ```
 
 
-### Setup
+<details>
+<summary><strong>Setup</strong></summary>
 
 **1. Install dependencies and compile**
 ```bash
@@ -157,6 +158,8 @@ Open the `vscode/` folder in your VS Code-compatible IDE and press **F5**. A new
 }
 ```
 
+</details>
+
 ---
 
 ## tmux
@@ -175,7 +178,8 @@ Node.js MCP server
 tmux sessions  ←  attach to watch
 ```
 
-### Setup
+<details>
+<summary><strong>Setup</strong></summary>
 
 **1. Install tmux**
 ```bash
@@ -204,6 +208,8 @@ npm run compile
   }
 }
 ```
+
+</details>
 
 ---
 
