@@ -124,6 +124,12 @@ npm run compile
 
 ---
 
+## AGENTS.md
+
+Copy [`assets/AGENTS.md`](assets/AGENTS.md) into the root of any project where you want agents to use this MCP server. Claude Code, Cursor, and other agents automatically read `AGENTS.md` at the project root and follow its rules.
+
+---
+
 ## API
 
 Both implementations share the same core tool set. Tools marked **VS Code only** or **tmux only** are not available in the other.
