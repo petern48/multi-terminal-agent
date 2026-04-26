@@ -14,6 +14,7 @@ interface TmuxEntry {
   alive: boolean;
   role?: "local" | "remote";
   ports?: PortMapping[]; // only set on ssh pair entries
+  blocked?: boolean; // true while a background process is running
 }
 
 function stripAnsi(str: string): string {
@@ -129,7 +130,15 @@ export class TerminalManager {
       // Wait briefly then snapshot the pane so the agent can verify startup output.
       await new Promise((r) => setTimeout(r, 1000));  // 1 second
       const snapshot = await this.readOutput(name, 50 /* lines */);
+      entry.blocked = true;
       return { output: snapshot, exitCode: undefined };
+    }
+
+    if (entry.blocked) {
+      throw new Error(
+        `Terminal "${name}" has a background process running. ` +
+        `Send C-c first with send_input('C-c'), then retry the command.`
+      );
     }
 
     const id = uid();
@@ -179,6 +188,7 @@ export class TerminalManager {
 
   async sendInput(name: string, text: string): Promise<string> {
     const entry = this.getAlive(name);
+    if (text === "C-c") entry.blocked = false;
     await execFile("tmux", ["send-keys", "-t", entry.target, text]);
     return `Sent input to "${name}"`;
   }
@@ -205,7 +215,7 @@ export class TerminalManager {
       const sessionName = entry.target.split(":")[0];
       const alive = liveSessions.has(sessionName);
       if (entry.alive !== alive) entry.alive = alive;
-      return { name, alive, role: entry.role, ports: entry.ports };
+      return { name, alive, ...(entry.blocked ? { blocked: true } : {}), role: entry.role, ports: entry.ports };
     });
   }
 
