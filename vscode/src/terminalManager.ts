@@ -179,7 +179,7 @@ export class TerminalManager {
       entry.terminal.sendText(command, true);
       entry.terminal.show(false);
       // Wait briefly then return a startup snapshot so the agent can verify the process started.
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 1000));  // 1 second
       return { output: this.readOutput(name, 50), exitCode: undefined };
     }
 
