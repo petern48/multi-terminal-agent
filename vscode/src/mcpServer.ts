@@ -101,16 +101,15 @@ export class MCPServer {
       try { return ok(JSON.stringify(this.tm.listTerminals(), null, 2)); } catch (e) { return fail(e); }
     });
 
-    server.tool("patch_file",
-      "Apply a unified diff to a file on the remote through a named terminal. Writes the patch to /tmp, displays it with ANSI colours, then applies with git apply (handles a/b/ prefixes) or falls back to patch -p1. Prefer this over overwriting the whole file when modifying existing remote files. Requires shell integration to be active on the terminal.",
+    server.tool("write_remote_file",
+      "Write the full file content to a path on the machine attached to a named terminal (e.g. the remote pane of an SSH pair). Uses python3 to decode UTF-8 via base64 and create parent directories — no unified diff, no scp. Prefer absolute paths; ~ is expanded in that session.",
       {
-        terminal: z.string().describe("Terminal name to run the patch in (must be the remote pane for SSH pairs)"),
-        filepath: z.string().describe("Absolute path to the file being patched (used in error messages)"),
-        diff: z.string().describe("Unified diff in git format with --- a/<path> and +++ b/<path> prefixes"),
-        cwd: z.string().optional().describe("Repo root to run git apply from (defaults to the terminal's current directory)"),
+        terminal: z.string().describe("Terminal name (must be the remote pane for SSH pairs)"),
+        path: z.string().describe("Destination path in that session (absolute recommended; ~ expanded)"),
+        content: z.string().describe("Complete new file content (UTF-8)"),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any, async ({ terminal, filepath, diff, cwd }: { terminal: string; filepath: string; diff: string; cwd?: string }): Promise<ToolResult> => {
-        try { return ok(await this.tm.patchFile(terminal, filepath, diff, cwd)); } catch (e) { return fail(e); }
+      } as any, async ({ terminal, path, content }: { terminal: string; path: string; content: string }): Promise<ToolResult> => {
+        try { return ok(await this.tm.writeRemoteFile(terminal, path, content)); } catch (e) { return fail(e); }
       });
 
     server.tool("close_terminal", "Close and remove a named terminal", {

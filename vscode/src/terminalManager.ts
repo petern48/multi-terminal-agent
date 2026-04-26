@@ -315,35 +315,27 @@ export class TerminalManager {
     }));
   }
 
-  async patchFile(terminalName: string, filepath: string, unifiedDiff: string, cwd?: string): Promise<string> {
-    const tmpPatch = `/tmp/mta_patch_${randomUUID().replace(/-/g, "")}.patch`;
-    // Random delimiter makes heredoc safe against any diff content
-    const delimiter = `PATCHEOF${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-
-    // Single-quoted heredoc: no shell interpretation of $vars/backticks inside the diff
-    const { exitCode: wExit, output: wOut } = await this.runCommand(
-      terminalName,
-      `cat > ${tmpPatch} << '${delimiter}'\n${unifiedDiff}\n${delimiter}`,
-      30_000,
-    );
-    if (wExit !== 0) throw new Error(`Failed to write patch file: ${wOut}`);
-
-    // Colorize diff in-terminal (bright red removed, bright green added, cyan hunks)
-    const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
-    await this.runCommand(terminalName, colorize, 30_000);
-
-    // Apply: git apply handles a/b/ prefixes; patch -p1 as fallback
-    const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
-    const { exitCode, output } = await this.runCommand(
-      terminalName,
-      `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`,
-      30_000,
-    );
-
-    await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5_000).catch(() => {});
-
-    if (exitCode !== 0) throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
-    return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
+  /**
+   * Write full file content on the machine attached to a named terminal (e.g. SSH-pair "remote")
+   * via `python3` + base64 — avoids shell-quoting bugs and works for any UTF-8.
+   * Parent directories are created; `path` may use ~ (expanded in that session).
+   */
+  async writeRemoteFile(terminalName: string, path: string, content: string): Promise<string> {
+    const b64 = Buffer.from(content, "utf8").toString("base64");
+    const py = [
+      "import base64,os,pathlib; p=os.path.expanduser(",
+      JSON.stringify(path),
+      "); b=",
+      JSON.stringify(b64),
+      "; pathlib.Path(p).parent.mkdir(parents=True, exist_ok=True); open(p,'wb').write(base64.b64decode(b))",
+    ].join("");
+    const command = "python3 -c " + JSON.stringify(py);
+    const { exitCode, output } = await this.runCommand(terminalName, command, 120_000);
+    if (exitCode !== 0) {
+      throw new Error(`write_remote_file failed (exit ${exitCode}): ${output || "(no output)"}`);
+    }
+    const lines = content.split("\n").length;
+    return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}" in terminal "${terminalName}"`;
   }
 
   closeTerminal(name: string): string {
