@@ -38,7 +38,7 @@ ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 
 <div align="center">↓</div>
 
-![create_ssh_pair MCP Call in Cursor](assets/images/create_ssh_pair-mcp-call.png)
+<img src="assets/images/create_ssh_pair-mcp-call.png" width="380" align="left">
 
 <div align="center">↓</div>
 
@@ -46,9 +46,9 @@ ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 
 <div align="center">↓</div>
 
-![Launch Worker MCP Call in Cursor](assets/images/launch-worker-mcp-call.png)
+<img src="assets/images/launch-worker-mcp-call.png" width="380" align="left">
 
-![Run test_worker.py client MCP Call in Cursor](assets/images/run-test_worker.py-mcp-call.png)
+<img src="assets/images/run-test_worker.py-mcp-call.png" width="380" align="left">
 
 
 <div align="center">↓</div>
