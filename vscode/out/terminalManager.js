@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TerminalManager = void 0;
 const vscode = __importStar(require("vscode"));
+const crypto_1 = require("crypto");
 function injectSshPortForwarding(command, ports) {
     if (!ports.length || !/^\s*ssh\s/.test(command))
         return command;
@@ -171,7 +172,7 @@ class TerminalManager {
     async runCommand(name, command, timeoutMs = 30000, opts) {
         const entry = this.getAlive(name);
         if (entry.blocked) {
-            throw new Error(`Terminal "${name}" is blocked by a background process — send C-c first`);
+            throw new Error(`Terminal "${name}" is blocked by a background process. Please call send_input("C-c") (or similar) to unblock it.`);
         }
         if (opts?.background) {
             entry.blocked = true;
@@ -243,6 +244,25 @@ class TerminalManager {
             ...(e.ports ? { ports: e.ports } : {}),
             ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
         }));
+    }
+    async patchFile(terminalName, filepath, unifiedDiff, cwd) {
+        const tmpPatch = `/tmp/mta_patch_${(0, crypto_1.randomUUID)().replace(/-/g, "")}.patch`;
+        const b64 = Buffer.from(unifiedDiff, "utf8").toString("base64");
+        // Write patch to temp file via Python (avoids shell quoting issues with diff content)
+        const writePy = `import base64; open(${JSON.stringify(tmpPatch)}, "wb").write(base64.b64decode(${JSON.stringify(b64)}))`;
+        const { exitCode: wExit, output: wOut } = await this.runCommand(terminalName, `python3 -c ${JSON.stringify(writePy)}`, 10000);
+        if (wExit !== 0)
+            throw new Error(`Failed to write patch file: ${wOut}`);
+        // Colorize diff in-terminal for visibility (bright red removed, bright green added, cyan hunks)
+        const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
+        await this.runCommand(terminalName, colorize, 10000);
+        // Apply: git apply handles a/b/ prefixes; patch -p1 as fallback
+        const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
+        const { exitCode, output } = await this.runCommand(terminalName, `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`, 30000);
+        await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5000).catch(() => { });
+        if (exitCode !== 0)
+            throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
+        return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
     }
     closeTerminal(name) {
         const entry = this.terminals.get(name);

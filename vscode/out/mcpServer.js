@@ -122,6 +122,20 @@ class MCPServer {
                 return fail(e);
             }
         });
+        server.tool("patch_file", "Apply a unified diff to a file on the remote through a named terminal. Writes the patch to /tmp, displays it with ANSI colours, then applies with git apply (handles a/b/ prefixes) or falls back to patch -p1. Prefer this over overwriting the whole file when modifying existing remote files. Requires shell integration to be active on the terminal.", {
+            terminal: zod_1.z.string().describe("Terminal name to run the patch in (must be the remote pane for SSH pairs)"),
+            filepath: zod_1.z.string().describe("Absolute path to the file being patched (used in error messages)"),
+            diff: zod_1.z.string().describe("Unified diff in git format with --- a/<path> and +++ b/<path> prefixes"),
+            cwd: zod_1.z.string().optional().describe("Repo root to run git apply from (defaults to the terminal's current directory)"),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }, async ({ terminal, filepath, diff, cwd }) => {
+            try {
+                return ok(await this.tm.patchFile(terminal, filepath, diff, cwd));
+            }
+            catch (e) {
+                return fail(e);
+            }
+        });
         server.tool("close_terminal", "Close and remove a named terminal", {
             name: zod_1.z.string(),
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
