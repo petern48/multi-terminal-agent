@@ -3,7 +3,6 @@
 Let AI coding agents control multiple named terminal sessions simultaneously via the [Model Context Protocol](https://modelcontextprotocol.io). The agent drives the terminals. You watch. Debug across client-server processes, remote SSH connections, and more! One agent in control means no agent communication nightmare.
 
 **Contents**
-- [Use cases](#use-cases)
 - [VS Code extension](#vs-code-extension) ⭐
   - [How it works](#how-it-works)
   - [Setup](#setup)
@@ -11,6 +10,7 @@ Let AI coding agents control multiple named terminal sessions simultaneously via
   - [How it works](#how-it-works-1)
   - [Setup](#setup-1)
 - [AGENTS.md](#agentsmd)
+- [Use cases](#use-cases)
 - [API (MCP Server Tools)](API.md)
 
 ---
@@ -24,74 +24,6 @@ Two implementations — pick one:
 | Requires | Cursor | tmux (`brew install tmux`) |
 
 > **Windsurf Support Limitation:** The VS Code extension creates terminals via the VS Code Extension API, but Windsurf does not display those terminals in its UI — they run invisibly in the background. This is a Windsurf integration limitation, not a bug in the extension. In theory, the VS Code Extension should still work, but the terminal windows will not be visible in Windsurf.
-
-## Use cases
-
-### Server + client iteration (e.g. database server + client)
-
-When a bug requires recompiling a server and re-running a client test, a single-terminal agent gets stuck — it can't keep the server running while also running the client. With a terminal pair, the agent restarts the server in one pane and runs tests in the other, iterating freely without any manual intervention.
-
-> **User:** "My tests are failing. Investigate, fix the bug, and confirm the test passes. Recompile and restart the server as many times as you need to."
-
-```
-# Create side-by-side terminals one for server and one for client
-Agent: create_terminal_pair("server", "client")
-# Start the database server
-Agent: run_command("server", "./build/clickhouse-server", { background: true })
-# Run the client or test
-Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
-# Kill the old database server
-Agent: send_input("server", "C-c")
-... (agent makes a code change locally) ...
-# Recompile source code and start the updated server
-Agent: run_command("server", "ninja -C build && ./build/clickhouse-server", { background: true })
-# Re-try the client or test
-Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
-... (continues iterating if needed)
-```
-
----
-
-### Debugging across two machines via SSH (e.g. local + remote VM or local + docker container)
-
-Cross-system bugs are hard to debug with a single agent because it can only see one side. With `create_ssh_pair`, one agent gets a local terminal and a remote terminal in the same session. It can serve as a single brain that is capable of inspecting and modifying both local and remote machines.
-
-> **User:** "The app on staging is returning 500s. SSH into user@vm, check the logs, and fix whatever's broken. Deploy your fix when you're done."
-
-```
-# Open a local shell and an SSH shell side by side, forwarding port 8080
-Agent: create_ssh_pair("local", "remote", "ssh user@vm", { remote_cwd: "/app", ports: [{remote: 8080, local: 8080}] })
-# Check recent errors on the remote
-Agent: run_command("remote", "tail -50 logs/error.log")
-# → KeyError: 'user_id' in handlers/auth.py:34
-# Read the offending file on the remote
-Agent: run_command("remote", "cat handlers/auth.py")
-# Write the fixed version of the file directly to the remote
-Agent: write_remote_file("remote", "/app/handlers/auth.py", "<full fixed content>")
-# Restart the app on the remote and verify it's healthy
-Agent: run_command("remote", "systemctl restart app")
-Agent: run_command("remote", "curl -s localhost:8080/health")
-# → {"status": "ok"}
-```
-
----
-
-
-### Frontend + backend running concurrently
-
-> **User:** "Start the backend and frontend, then figure out why the login form isn't submitting. Fix it and confirm it works."
-
-```
-Agent: create_terminal_pair("api", "web")
-Agent: run_command("api", "cd backend && npm start", { background: true })
-Agent: run_command("web", "cd frontend && npm run dev", { background: true })
-... (agent makes a code change) ...
-Agent: send_input("api", "C-c")
-Agent: run_command("api", "cd backend && npm start", { background: true })
-```
-
-
----
 
 ## VS Code Extension
 
@@ -226,6 +158,72 @@ npm run compile
 ## AGENTS.md
 
 Copy [`assets/AGENTS.md`](assets/AGENTS.md) into the root of any project where you want agents to use this MCP server. Claude Code, Cursor, and other agents automatically read `AGENTS.md` at the project root and follow its rules.
+
+---
+
+## Use cases
+
+### Server + client iteration (e.g. database server + client)
+
+When a bug requires recompiling a server and re-running a client test, a single-terminal agent gets stuck — it can't keep the server running while also running the client. With a terminal pair, the agent restarts the server in one pane and runs tests in the other, iterating freely without any manual intervention.
+
+> **User:** "My tests are failing. Investigate, fix the bug, and confirm the test passes. Recompile and restart the server as many times as you need to."
+
+```
+# Create side-by-side terminals one for server and one for client
+Agent: create_terminal_pair("server", "client")
+# Start the database server
+Agent: run_command("server", "./build/clickhouse-server", { background: true })
+# Run the client or test
+Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
+# Kill the old database server
+Agent: send_input("server", "C-c")
+... (agent makes a code change locally) ...
+# Recompile source code and start the updated server
+Agent: run_command("server", "ninja -C build && ./build/clickhouse-server", { background: true })
+# Re-try the client or test
+Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
+... (continues iterating if needed)
+```
+
+---
+
+### Debugging across two machines via SSH (e.g. local + remote VM or local + docker container)
+
+Cross-system bugs are hard to debug with a single agent because it can only see one side. With `create_ssh_pair`, one agent gets a local terminal and a remote terminal in the same session. It can serve as a single brain that is capable of inspecting and modifying both local and remote machines.
+
+> **User:** "The app on staging is returning 500s. SSH into user@vm, check the logs, and fix whatever's broken. Deploy your fix when you're done."
+
+```
+# Open a local shell and an SSH shell side by side, forwarding port 8080
+Agent: create_ssh_pair("local", "remote", "ssh user@vm", { remote_cwd: "/app", ports: [{remote: 8080, local: 8080}] })
+# Check recent errors on the remote
+Agent: run_command("remote", "tail -50 logs/error.log")
+# → KeyError: 'user_id' in handlers/auth.py:34
+# Read the offending file on the remote
+Agent: run_command("remote", "cat handlers/auth.py")
+# Write the fixed version of the file directly to the remote
+Agent: write_remote_file("remote", "/app/handlers/auth.py", "<full fixed content>")
+# Restart the app on the remote and verify it's healthy
+Agent: run_command("remote", "systemctl restart app")
+Agent: run_command("remote", "curl -s localhost:8080/health")
+# → {"status": "ok"}
+```
+
+---
+
+### Frontend + backend running concurrently
+
+> **User:** "Start the backend and frontend, then figure out why the login form isn't submitting. Fix it and confirm it works."
+
+```
+Agent: create_terminal_pair("api", "web")
+Agent: run_command("api", "cd backend && npm start", { background: true })
+Agent: run_command("web", "cd frontend && npm run dev", { background: true })
+... (agent makes a code change) ...
+Agent: send_input("api", "C-c")
+Agent: run_command("api", "cd backend && npm start", { background: true })
+```
 
 ---
 
