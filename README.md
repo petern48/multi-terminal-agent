@@ -39,21 +39,35 @@ ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 <div align="center">↓</div>
 
 <img src="assets/images/create_ssh_pair-mcp-call.png" width="380" align="left">
+<br clear="left">
 
 <div align="center">↓</div>
 
 ![Resulting Cursor Terminal Split View](assets/images/cursor-split-view.png)
 
+```
+Run the `worker/worker.py` file on the remote machine. Then run the `client/test_worker.py` on the local machine
+```
+
 <div align="center">↓</div>
 
 <img src="assets/images/launch-worker-mcp-call.png" width="380" align="left">
 
-<img src="assets/images/run-test_worker.py-mcp-call.png" width="380" align="left">
+<br clear="left">
 
+<img src="assets/images/run-test_worker.py-mcp-call.png" width="460" align="left">
+<br clear="left">
 
 <div align="center">↓</div>
 
 ![Resulting Server-Client Split Terminal](assets/images/server-client-split-terminal-run.png)
+
+```
+User: Debug until the tests pass. The failures can be on the local client side or remote server side. Please investigate both the local and remote machine.
+```
+<div align="center">↓</div>
+<div align="center">...</div>
+
 
 <details>
 <summary><strong>Setup</strong></summary>
