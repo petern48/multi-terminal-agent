@@ -59,13 +59,13 @@ export class MCPServer {
     });
 
     server.tool("run_command",
-      "Run a command in a terminal. By default blocks until the command exits and returns full output + exit code (requires shell integration). Use background=true to fire-and-forget — the command runs in the terminal foreground and can be stopped with send_input('C-c').",
+      "Run a command in a terminal. For local/integrated panes, blocks until the command exits and returns output + exit code (shell integration + onDidEnd). For create_ssh_pair remotes, uses a sendText+exit-marker path so short commands return without spurious timeouts. background=true = fire-and-forget with a 1s snapshot; long-running in foreground, stop with send_input('C-c').",
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {
         name: z.string(),
         command: z.string(),
         timeout: z.number().optional().describe("Timeout ms (default 30000)"),
-        background: z.boolean().optional().describe("If true, start the command and return immediately with a startup snapshot. Stop later with send_input('C-c')."),
+        background: z.boolean().optional().describe("If true, start the command and return after ~1s with a snapshot. Stop long-running work with send_input('C-c')."),
       } as any,
       async ({ name, command, timeout, background }: { name: string; command: string; timeout?: number; background?: boolean }): Promise<ToolResult> => {
         try { return ok(JSON.stringify(await this.tm.runCommand(name, command, timeout, { background }))); } catch (e) { return fail(e); }
@@ -100,6 +100,18 @@ export class MCPServer {
     {} as any, async (): Promise<ToolResult> => {
       try { return ok(JSON.stringify(this.tm.listTerminals(), null, 2)); } catch (e) { return fail(e); }
     });
+
+    server.tool("patch_file",
+      "Apply a unified diff to a file on the remote through a named terminal. Writes the patch to /tmp, displays it with ANSI colours, then applies with git apply (handles a/b/ prefixes) or falls back to patch -p1. Prefer this over overwriting the whole file when modifying existing remote files. Requires shell integration to be active on the terminal.",
+      {
+        terminal: z.string().describe("Terminal name to run the patch in (must be the remote pane for SSH pairs)"),
+        filepath: z.string().describe("Absolute path to the file being patched (used in error messages)"),
+        diff: z.string().describe("Unified diff in git format with --- a/<path> and +++ b/<path> prefixes"),
+        cwd: z.string().optional().describe("Repo root to run git apply from (defaults to the terminal's current directory)"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any, async ({ terminal, filepath, diff, cwd }: { terminal: string; filepath: string; diff: string; cwd?: string }): Promise<ToolResult> => {
+        try { return ok(await this.tm.patchFile(terminal, filepath, diff, cwd)); } catch (e) { return fail(e); }
+      });
 
     server.tool("close_terminal", "Close and remove a named terminal", {
       name: z.string(),

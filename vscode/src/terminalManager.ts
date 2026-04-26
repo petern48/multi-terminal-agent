@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { randomUUID } from "crypto";
 
 export interface PortMapping {
   remote: number;
@@ -49,9 +50,12 @@ function findProbableAbsPathInOutput(text: string): string | undefined {
 export class TerminalManager {
   private terminals = new Map<string, TerminalEntry>();
   private static readonly MAX_BUFFER = 500;
+  // TerminalShellExecution.read() is single-consumer — only this handler may call read().
+  // runCommand waits for onDidEndTerminalShellExecution and reads new lines from outputBuffer
+  // (snapshot index before executeCommand). That avoids hanging on read() iterators that never
+  // complete on some remotes while still returning captured output.
 
   constructor(context: vscode.ExtensionContext) {
-    // Capture output for commands run via shellIntegration.executeCommand (or sent via sendText when SI is active)
     context.subscriptions.push(
       vscode.window.onDidStartTerminalShellExecution(async (event) => {
         const entry = this.findByTerminal(event.terminal);
@@ -183,36 +187,72 @@ export class TerminalManager {
       return { output: this.readOutput(name, 50), exitCode: undefined };
     }
 
+    if (entry.role === "remote") {
+      return this.runCommandRemote(name, command, timeoutMs, entry);
+    }
+
     if (!entry.terminal.shellIntegration) {
       throw new Error(`Shell integration not active on "${name}" — run any command manually first to activate it`);
     }
+
+    const bufferStart = entry.outputBuffer.length;
     const execution = entry.terminal.shellIntegration.executeCommand(command);
 
-    // Capture exit code from the end event matched by execution identity
-    let exitCode: number | undefined;
-    const exitCodePromise = new Promise<number | undefined>((resolve) => {
-      const disposable = vscode.window.onDidEndTerminalShellExecution((event) => {
-        if (event.execution === execution) {
-          disposable.dispose();
-          resolve(event.exitCode);
-        }
+    let endListenerDisposable: vscode.Disposable | undefined;
+    const exitPromise = new Promise<number | undefined>((resolve) => {
+      endListenerDisposable = vscode.window.onDidEndTerminalShellExecution((event) => {
+        if (event.execution !== execution) return;
+        endListenerDisposable?.dispose();
+        endListenerDisposable = undefined;
+        resolve(event.exitCode);
       });
     });
 
-    const chunks: string[] = [];
-    const readAll = async () => {
-      for await (const data of execution.read()) {
-        chunks.push(stripAnsi(data));
-      }
-      return chunks.join("");
-    };
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Command timed out after ${timeoutMs}ms`)), timeoutMs)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        endListenerDisposable?.dispose();
+        endListenerDisposable = undefined;
+        reject(new Error(`Command timed out after ${timeoutMs}ms`));
+      }, timeoutMs)
     );
 
-    const output = await Promise.race([readAll(), timeout]);
-    exitCode = await Promise.race([exitCodePromise, new Promise<undefined>((r) => setTimeout(() => r(undefined), 500))]);
+    let exitCode: number | undefined;
+    try {
+      exitCode = await Promise.race([exitPromise, timeoutPromise]);
+    } catch (e) {
+      endListenerDisposable?.dispose();
+      throw e;
+    }
+
+    // Trailing lines can land in the buffer slightly after the end event
+    await new Promise((r) => setTimeout(r, 150));
+    const output = entry.outputBuffer.slice(bufferStart).join("\n");
     return { output, exitCode };
+  }
+
+  private async runCommandRemote(
+    _name: string,
+    command: string,
+    timeoutMs: number,
+    entry: TerminalEntry,
+  ): Promise<{ output: string; exitCode: number }> {
+    const bufferStart = entry.outputBuffer.length;
+    const token = randomUUID().replace(/-/g, "");
+    const endLineRe = new RegExp(`__MTA_EX__${token}__(\\d+)`);
+    const wrapped = `set +e; ${command}\n__mta__ec=$?; printf '\\n__MTA_EX__${token}__%s\\n' "$__mta__ec"`;
+    entry.terminal.sendText(wrapped, true);
+    entry.terminal.show(false);
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 80));
+      const chunk = entry.outputBuffer.slice(bufferStart).join("\n");
+      const m = endLineRe.exec(chunk);
+      if (m) {
+        return { output: chunk.slice(0, m.index).trimEnd(), exitCode: parseInt(m[1]!, 10) };
+      }
+    }
+    throw new Error(`Command timed out after ${timeoutMs}ms`);
   }
 
   // sendCommand(name: string, command: string): string {
@@ -259,6 +299,37 @@ export class TerminalManager {
       ...(e.ports ? { ports: e.ports } : {}),
       ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
     }));
+  }
+
+  async patchFile(terminalName: string, filepath: string, unifiedDiff: string, cwd?: string): Promise<string> {
+    const tmpPatch = `/tmp/mta_patch_${randomUUID().replace(/-/g, "")}.patch`;
+    // Random delimiter makes heredoc safe against any diff content
+    const delimiter = `PATCHEOF${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+
+    // Single-quoted heredoc: no shell interpretation of $vars/backticks inside the diff
+    const { exitCode: wExit, output: wOut } = await this.runCommand(
+      terminalName,
+      `cat > ${tmpPatch} << '${delimiter}'\n${unifiedDiff}\n${delimiter}`,
+      30_000,
+    );
+    if (wExit !== 0) throw new Error(`Failed to write patch file: ${wOut}`);
+
+    // Colorize diff in-terminal (bright red removed, bright green added, cyan hunks)
+    const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
+    await this.runCommand(terminalName, colorize, 30_000);
+
+    // Apply: git apply handles a/b/ prefixes; patch -p1 as fallback
+    const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
+    const { exitCode, output } = await this.runCommand(
+      terminalName,
+      `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`,
+      30_000,
+    );
+
+    await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5_000).catch(() => {});
+
+    if (exitCode !== 0) throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
+    return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
   }
 
   closeTerminal(name: string): string {
