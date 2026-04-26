@@ -36,26 +36,22 @@ User: Create split ssh terminals using the following ssh command
 ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 ```
 
-                    |
-                    V
+<div align="center">↓</div>
 
 ![create_ssh_pair MCP Call in Cursor](assets/images/create_ssh_pair-mcp-call.png)
 
-                    |
-                    V
+<div align="center">↓</div>
 
 ![Resulting Cursor Terminal Split View](assets/images/cursor-split-view.png)
 
-                    |
-                    V
+<div align="center">↓</div>
 
 ![Launch Worker MCP Call in Cursor](assets/images/launch-worker-mcp-call.png)
 
 ![Run test_worker.py client MCP Call in Cursor](assets/images/run-test_worker.py-mcp-call.png)
 
 
-                    |
-                    V
+<div align="center">↓</div>
 
 ![Resulting Server-Client Split Terminal](assets/images/server-client-split-terminal-run.png)
 
