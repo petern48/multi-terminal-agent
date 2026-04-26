@@ -124,21 +124,21 @@ export class TerminalManager {
   ): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
 
-    if (opts?.background) {
-      // Start the command in the pane foreground — visible, killable with send_input C-c.
-      await execFile("tmux", ["send-keys", "-t", entry.target, command, "Enter"]);
-      // Wait briefly then snapshot the pane so the agent can verify startup output.
-      await new Promise((r) => setTimeout(r, 1000));  // 1 second
-      const snapshot = await this.readOutput(name, 50 /* lines */);
-      entry.blocked = true;
-      return { output: snapshot, exitCode: undefined };
-    }
-
     if (entry.blocked) {
       throw new Error(
         `Terminal "${name}" has a background process running. ` +
         `Send C-c first with send_input('C-c'), then retry the command.`
       );
+    }
+
+    if (opts?.background) {
+      // Start the command in the pane foreground — visible, killable with send_input C-c.
+      await execFile("tmux", ["send-keys", "-t", entry.target, command, "Enter"]);
+      // Wait briefly then snapshot the pane so the agent can verify startup output.
+      await new Promise((r) => setTimeout(r, 1000));  // 1 second
+      entry.blocked = true;
+      const snapshot = await this.readOutput(name, 50 /* lines */);
+      return { output: snapshot, exitCode: undefined };
     }
 
     const id = uid();
