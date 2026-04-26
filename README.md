@@ -30,8 +30,13 @@ Agent (Claude Code / Cursor)
     ▼
 MCP Server (localhost:3456)
     │  VS Code Extension API
-    ▼
-Terminal Panel  ←  you watch this
+    |_________________
+    |                 |
+    ▼                 ▼
+┌─────────────────┬─────────────────┐
+│  Terminal Panel │  Terminal Panel │  ←  you watch these
+│    (server)     │    (client)     │
+└─────────────────┴─────────────────┘
 ```
 
 ### Setup
