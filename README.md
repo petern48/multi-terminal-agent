@@ -108,6 +108,7 @@ Then run the `client/test_worker.py` on the local machine
 User: The failures can be on the local client side or remote server side.
 Please investigate both the local and remote machine and implement a fix.
 ```
+
 <div align="center">↓</div>
 <div align="center">...</div>
 
@@ -153,14 +154,30 @@ npm run compile
 A standalone Node.js process that speaks MCP over stdio. It creates and manages named tmux sessions — attach to any of them with `tmux attach -t mta_<name>` to watch the agent work.
 
 ```
-Agent (Claude Code / any MCP client)
-    │  MCP tool calls (stdio)
-    ▼
-Node.js MCP server
-    │  tmux CLI
-    ▼
-tmux sessions  ←  attach to watch
+User: Create split ssh terminals using the following ssh command
+ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 ```
+
+<div align="center">↓</div>
+
+<img src="assets/images/tmux-create-ssh-mcp-call.png" width="380" align="left">
+<br clear="left">
+
+<div align="center">↓</div>
+<div align="center">...</div>
+<div align="center">↓</div>
+
+```
+User: The failures can be on the local client side or remote server side.
+Please investigate both the local and remote machine and implement a fix.
+```
+
+<div align="center">↓</div>
+
+![Tmux Terminal Split Resulting from Fixed Code](assets/images/tmux-solved-terminal-output.png)
+
+
+`*` Note: the `tmux` terminal does not open automatically. You must open a terminal and then run `tmux attach -t mta_<name>` to view it. You can find the correct `tmux attach` command in the reponse of the MCP that created the tmux split terminal. For example, the screenshot above shows `tmux attach -t mta_local`.
 
 ---
 
