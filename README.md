@@ -254,36 +254,59 @@ Close and remove a named terminal.
 
 ## Use cases
 
-### Debugging across two machines (local + Docker / remote VM)
-
-Cross-system bugs are hard to debug with a single agent because it can only see one side. With `create_ssh_pair`, one agent gets a local terminal and a remote terminal in the same session — it can tail logs on the remote, push a fix from local, and verify the result without losing context about either side.
-
-```
-Agent: create_ssh_pair("local", "remote", "ssh user@vm", { remote_cwd: "/app", ports: [{remote: 8080, local: 8080}] })
-Agent: run_command("remote", "tail -50 logs/error.log")
-Agent: run_command("local", "scp -r src/ user@vm:/app/src/")
-Agent: run_command("remote", "systemctl restart app && curl localhost:8080/health")
-```
-
----
-
 ### Server + client iteration (e.g. ClickHouse, databases, compilers)
 
 When a bug requires recompiling a server and re-running a client test, a single-terminal agent gets stuck — it can't keep the server running while also running the client. With a terminal pair, the agent restarts the server in one pane and runs tests in the other, iterating freely without any manual intervention.
 
+> **User:** "My tests are failing. Investigate, fix the bug, and confirm the test passes. Recompile and restart the server as many times as you need to."
+
 ```
+# Create side-by-side terminals one for server and one for client
 Agent: create_terminal_pair("server", "client")
+# Start the database server
 Agent: run_command("server", "./build/clickhouse-server --config server.xml", { background: true })
+# Run the client or test
 Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
-# agent finds a bug, patches source, then:
+# Kill the old database server
 Agent: send_input("server", "C-c")
+... (agent makes a code change) ...
+# Recompile source code and start the updated server
 Agent: run_command("server", "ninja -C build && ./build/clickhouse-server --config server.xml", { background: true })
+# Re-try the client or test
 Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
+... (continues iterating if needed)
 ```
 
 ---
 
+### Debugging across two machines via SSH (e.g. local + remote VM or local + docker container)
+
+Cross-system bugs are hard to debug with a single agent because it can only see one side. With `create_ssh_pair`, one agent gets a local terminal and a remote terminal in the same session. It can serve as a single brain that is capable of inspecting and modifying both local and remote machines.
+
+> **User:** "The app on staging is returning 500s. SSH into user@vm, check the logs, and fix whatever's broken. Deploy your fix when you're done."
+
+```
+# Open a local shell and an SSH shell side by side, forwarding port 8080
+Agent: create_ssh_pair("local", "remote", "ssh user@vm", { remote_cwd: "/app", ports: [{remote: 8080, local: 8080}] })
+# Check recent errors on the remote
+Agent: run_command("remote", "tail -50 logs/error.log")
+# → KeyError: 'user_id' in handlers/auth.py:34
+# Read the offending file on the remote
+Agent: run_command("remote", "cat handlers/auth.py")
+# Apply a fix directly to the remote file via a unified diff
+Agent: patch_file("remote", "/app/handlers/auth.py", "<unified diff>", "/app")
+# Restart the app on the remote and verify it's healthy
+Agent: run_command("remote", "systemctl restart app")
+Agent: run_command("remote", "curl -s localhost:8080/health")
+# → {"status": "ok"}
+```
+
+---
+
+
 ### Frontend + backend running concurrently
+
+> **User:** "Start the backend and frontend, then figure out why the login form isn't submitting. Fix it and confirm it works."
 
 ```
 Agent: create_terminal_pair("api", "web")
