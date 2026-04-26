@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express, { Request, Response } from "express";
 import { Server } from "http";
 import { z } from "zod";
-import { TerminalManager } from "./terminalManager";
+import { TerminalManager, PortMapping } from "./terminalManager";
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -31,6 +31,23 @@ export class MCPServer {
     } as any, async ({ name, cwd }: { name: string; cwd?: string }): Promise<ToolResult> => {
       try { return ok(this.tm.createTerminal(name, cwd)); } catch (e) { return fail(e); }
     });
+
+    server.tool("create_ssh_pair",
+      "Create a local/remote terminal pair. The local terminal is for local commands (scp, file writes). The remote terminal automatically runs the connect command (ssh or docker exec) so it operates inside the remote/container. Port mappings inject -L forwarding flags into ssh commands. After connect, the remote pane’s cwd is probed (or taken from optional remote_cwd) and stored on the remote terminal only; list_terminals exposes it as cwd. In-memory for this session only.",
+      {
+        local_name: z.string().describe("Name for the local terminal"),
+        remote_name: z.string().describe("Name for the remote terminal"),
+        connect_command: z.string().describe("Command to connect to remote, e.g. 'ssh user@host' or 'docker exec -it container bash'"),
+        cwd: z.string().optional().describe("Working directory for the local terminal"),
+        remote_cwd: z.string().optional().describe("Optional absolute path on the remote to cd into after connect; also used if pwd output cannot be parsed"),
+        ports: z.array(z.object({
+          remote: z.number().describe("Port on the remote/container"),
+          local: z.number().describe("Port on the local machine"),
+        })).optional().describe("Port mappings to forward. Injects -L flags into ssh commands."),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any, async ({ local_name, remote_name, connect_command, cwd, remote_cwd, ports }: { local_name: string; remote_name: string; connect_command: string; cwd?: string; remote_cwd?: string; ports?: PortMapping[] }): Promise<ToolResult> => {
+        try { return ok(await this.tm.createSshPair(local_name, remote_name, connect_command, cwd, ports, remote_cwd)); } catch (e) { return fail(e); }
+      });
 
     server.tool("create_terminal_pair", "Create two named terminals side by side in a split view. Prefer this over calling create_terminal twice.", {
       name1: z.string().describe("Name for the left terminal"),
@@ -78,7 +95,7 @@ export class MCPServer {
       try { return ok(this.tm.readOutput(name, lines)); } catch (e) { return fail(e); }
     });
 
-    server.tool("list_terminals", "List all managed terminals and whether they are alive",
+    server.tool("list_terminals", "List all managed terminals and whether they are alive. Remote SSH panes may include cwd and remote_cwd_source (from the last create_ssh_pair probe).",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any, async (): Promise<ToolResult> => {
       try { return ok(JSON.stringify(this.tm.listTerminals(), null, 2)); } catch (e) { return fail(e); }

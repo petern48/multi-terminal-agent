@@ -35,9 +35,32 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TerminalManager = void 0;
 const vscode = __importStar(require("vscode"));
+function injectSshPortForwarding(command, ports) {
+    if (!ports.length || !/^\s*ssh\s/.test(command))
+        return command;
+    const missing = ports.filter((p) => !command.includes(`-L ${p.local}:`));
+    if (!missing.length)
+        return command;
+    const flags = missing.map((p) => `-L ${p.local}:localhost:${p.remote}`).join(" ");
+    return command.replace(/^(\s*ssh\s)/, `$1${flags} `);
+}
 function stripAnsi(str) {
     // eslint-disable-next-line no-control-regex
     return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1B\][^\x07]*\x07/g, "");
+}
+function quoteBashPath(p) {
+    return `'${p.replace(/'/g, "'\\''")}'`;
+}
+function findProbableAbsPathInOutput(text) {
+    const lines = text.split("\n").map((l) => l.trim().replace(/\r$/, "")).filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.length > 1 && line.startsWith("/") && !line.includes(" "))
+            return line;
+        if (line.length > 1 && line.startsWith("/") && /^\/[\w/.-]+$/.test(line))
+            return line;
+    }
+    return undefined;
 }
 class TerminalManager {
     constructor(context) {
@@ -72,6 +95,65 @@ class TerminalManager {
         this.terminals.set(name, { terminal, outputBuffer: [], alive: true });
         terminal.show();
         return `Created terminal "${name}"`;
+    }
+    /**
+     * After SSH (or similar) is up, records the remote filesystem cwd on the remote `TerminalEntry`
+     * (`remoteCwd`, `remoteCwdSource`) and includes it in the return text for agents.
+     */
+    async createSshPair(localName, remoteName, connectCommand, cwd, ports, remote_cwd) {
+        for (const n of [localName, remoteName]) {
+            const existing = this.terminals.get(n);
+            if (existing?.alive)
+                existing.terminal.dispose();
+            this.terminals.delete(n);
+        }
+        const localTerminal = vscode.window.createTerminal({ name: localName, cwd });
+        this.terminals.set(localName, { terminal: localTerminal, outputBuffer: [], alive: true, role: "local", ports });
+        const remoteTerminal = vscode.window.createTerminal({ name: remoteName, location: { parentTerminal: localTerminal } });
+        this.terminals.set(remoteName, {
+            terminal: remoteTerminal,
+            outputBuffer: [],
+            alive: true,
+            role: "remote",
+            ports,
+        });
+        const effectiveCommand = ports ? injectSshPortForwarding(connectCommand, ports) : connectCommand;
+        remoteTerminal.sendText(effectiveCommand, true);
+        localTerminal.show();
+        const explicit = remote_cwd?.trim();
+        await new Promise((r) => setTimeout(r, 2800));
+        const remoteEntry = this.terminals.get(remoteName);
+        if (remoteEntry) {
+            if (explicit) {
+                remoteTerminal.sendText(`cd ${quoteBashPath(explicit)} 2>/dev/null || true; pwd -P`, true);
+                await new Promise((r) => setTimeout(r, 1200));
+                const out = this.readOutput(remoteName, 50);
+                const path = findProbableAbsPathInOutput(out) || explicit;
+                remoteEntry.remoteCwd = path;
+                remoteEntry.remoteCwdSource = "explicit";
+            }
+            else {
+                remoteTerminal.sendText("pwd -P", true);
+                await new Promise((r) => setTimeout(r, 1200));
+                const out = this.readOutput(remoteName, 50);
+                const path = findProbableAbsPathInOutput(out);
+                if (path) {
+                    remoteEntry.remoteCwd = path;
+                    remoteEntry.remoteCwdSource = "probed";
+                }
+            }
+        }
+        const portsSummary = ports && ports.length > 0
+            ? `\n  ports:   ${ports.map((p) => `remote:${p.remote} → local:${p.local}`).join(", ")}`
+            : "";
+        const re = this.terminals.get(remoteName);
+        const jsonLine = re?.remoteCwd
+            ? `\n\n${JSON.stringify({
+                remote_cwd: re.remoteCwd,
+                remote_cwd_source: re.remoteCwdSource,
+            })}`
+            : "";
+        return `Created SSH pair:\n  local:  "${localName}" (local commands)\n  remote: "${remoteName}" (runs inside the remote/container)${portsSummary}${jsonLine}`;
     }
     createTerminalPair(name1, name2, cwd) {
         const t1 = vscode.window.createTerminal({ name: name1, cwd });
@@ -149,6 +231,9 @@ class TerminalManager {
         return Array.from(this.terminals.entries()).map(([name, e]) => ({
             name,
             alive: e.alive,
+            ...(e.role ? { role: e.role } : {}),
+            ...(e.ports ? { ports: e.ports } : {}),
+            ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
         }));
     }
     closeTerminal(name) {

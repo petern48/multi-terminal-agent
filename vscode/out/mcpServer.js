@@ -34,6 +34,25 @@ class MCPServer {
                 return fail(e);
             }
         });
+        server.tool("create_ssh_pair", "Create a local/remote terminal pair. The local terminal is for local commands (scp, file writes). The remote terminal automatically runs the connect command (ssh or docker exec) so it operates inside the remote/container. Port mappings inject -L forwarding flags into ssh commands. After connect, the remote pane’s cwd is probed (or taken from optional remote_cwd) and stored on the remote terminal only; list_terminals exposes it as cwd. In-memory for this session only.", {
+            local_name: zod_1.z.string().describe("Name for the local terminal"),
+            remote_name: zod_1.z.string().describe("Name for the remote terminal"),
+            connect_command: zod_1.z.string().describe("Command to connect to remote, e.g. 'ssh user@host' or 'docker exec -it container bash'"),
+            cwd: zod_1.z.string().optional().describe("Working directory for the local terminal"),
+            remote_cwd: zod_1.z.string().optional().describe("Optional absolute path on the remote to cd into after connect; also used if pwd output cannot be parsed"),
+            ports: zod_1.z.array(zod_1.z.object({
+                remote: zod_1.z.number().describe("Port on the remote/container"),
+                local: zod_1.z.number().describe("Port on the local machine"),
+            })).optional().describe("Port mappings to forward. Injects -L flags into ssh commands."),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }, async ({ local_name, remote_name, connect_command, cwd, remote_cwd, ports }) => {
+            try {
+                return ok(await this.tm.createSshPair(local_name, remote_name, connect_command, cwd, ports, remote_cwd));
+            }
+            catch (e) {
+                return fail(e);
+            }
+        });
         server.tool("create_terminal_pair", "Create two named terminals side by side in a split view. Prefer this over calling create_terminal twice.", {
             name1: zod_1.z.string().describe("Name for the left terminal"),
             name2: zod_1.z.string().describe("Name for the right terminal"),
@@ -93,7 +112,7 @@ class MCPServer {
                 return fail(e);
             }
         });
-        server.tool("list_terminals", "List all managed terminals and whether they are alive", 
+        server.tool("list_terminals", "List all managed terminals and whether they are alive. Remote SSH panes may include cwd and remote_cwd_source (from the last create_ssh_pair probe).", 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {}, async () => {
             try {
