@@ -314,33 +314,12 @@ export class TerminalManager {
     return `Wrote ${lines} line${lines === 1 ? "" : "s"} to "${path}"${note}`;
   }
 
-  async patchFile(terminalName: string, filepath: string, unifiedDiff: string, cwd?: string): Promise<string> {
-    const tmpPatch = `/tmp/mta_patch_${uid()}.patch`;
-    const b64 = Buffer.from(unifiedDiff, "utf8").toString("base64");
-
-    // Write the patch to a temp file via Python (cross-platform base64 decode)
-    const py = `import base64; open(${JSON.stringify(tmpPatch)}, "wb").write(base64.b64decode(${JSON.stringify(b64)}))`;
-    const { exitCode: wExit, output: wOut } = await this.runCommand(
-      terminalName, `python3 -c ${JSON.stringify(py)}`, 10000,
-    );
-    if (wExit !== 0) throw new Error(`Failed to write patch file: ${wOut}`);
-
-    // Display the diff with ANSI colors: bright red for removed, bright green for added, cyan for hunks
-    const colorize = `awk 'BEGIN{R="\\033[91m";G="\\033[92m";C="\\033[36m";N="\\033[0m"} /^\\+\\+\\+/{print;next} /^---/{print;next} /^\\+/{print G$0 N;next} /^-/{print R$0 N;next} /^@@/{print C$0 N;next} {print}' ${tmpPatch}`;
-    await this.runCommand(terminalName, colorize, 10000);
-
-    // Apply: git apply first (handles a/b/ prefixes), fall back to patch -p1
-    const prefix = cwd ? `cd ${JSON.stringify(cwd)} && ` : "";
-    const { exitCode, output } = await this.runCommand(
-      terminalName,
-      `${prefix}(git apply ${tmpPatch} 2>/dev/null || patch -p1 < ${tmpPatch})`,
-      30000,
-    );
-
-    await this.runCommand(terminalName, `rm -f ${tmpPatch}`, 5000).catch(() => {});
-
-    if (exitCode !== 0) throw new Error(`Patch apply failed (exit ${exitCode}): ${output}`);
-    return `Patched "${filepath}" in terminal "${terminalName}"${output ? `:\n${output}` : ""}`;
+  /**
+   * Same bytes as `writeFile(..., { target_terminal })` — dedicated MCP tool for remote session writes
+   * without reusing the path/scp heuristics of the generic `write_file` tool.
+   */
+  writeRemoteFile(terminalName: string, path: string, content: string): Promise<string> {
+    return this.writeFile(path, content, { target_terminal: terminalName });
   }
 
   private getAlive(name: string): TmuxEntry {
