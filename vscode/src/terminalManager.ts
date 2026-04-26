@@ -219,13 +219,14 @@ export class TerminalManager {
       });
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => {
+    let timerId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timerId = setTimeout(() => {
         endListenerDisposable?.dispose();
         endListenerDisposable = undefined;
         reject(new Error(`Command timed out after ${timeoutMs}ms`));
-      }, timeoutMs)
-    );
+      }, timeoutMs);
+    });
 
     let exitCode: number | undefined;
     try {
@@ -233,6 +234,8 @@ export class TerminalManager {
     } catch (e) {
       endListenerDisposable?.dispose();
       throw e;
+    } finally {
+      clearTimeout(timerId!);
     }
 
     // Trailing lines can land in the buffer slightly after the end event
