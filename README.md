@@ -27,48 +27,6 @@ Two implementations — pick one:
 
 ## VS Code Extension
 
-### How it works
-
-The extension starts a local MCP HTTP server on `localhost:3456` when VS Code activates. Terminals are created and managed inside VS Code's terminal panel — you see every command the agent runs in real time.
-
-```
-User: Create split ssh terminals using the following ssh command
-ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
-```
-
-<div align="center">↓</div>
-
-<img src="assets/images/create_ssh_pair-mcp-call.png" width="380" align="left">
-<br clear="left">
-
-<div align="center">↓</div>
-
-![Resulting Cursor Terminal Split View](assets/images/cursor-split-view.png)
-
-```
-Run the `worker/worker.py` file on the remote machine. Then run the `client/test_worker.py` on the local machine
-```
-
-<div align="center">↓</div>
-
-<img src="assets/images/launch-worker-mcp-call.png" width="380" align="left">
-
-<br clear="left">
-
-<img src="assets/images/run-test_worker.py-mcp-call.png" width="460" align="left">
-<br clear="left">
-
-<div align="center">↓</div>
-
-![Resulting Server-Client Split Terminal](assets/images/server-client-split-terminal-run.png)
-
-```
-User: Debug until the tests pass. The failures can be on the local client side or remote server side. Please investigate both the local and remote machine.
-```
-<div align="center">↓</div>
-<div align="center">...</div>
-
-
 <details>
 <summary><strong>Setup</strong></summary>
 
@@ -112,23 +70,52 @@ Open the `vscode/` folder in your VS Code-compatible IDE and press **F5**. A new
 
 </details>
 
+### How it works
+
+The extension starts a local MCP HTTP server on `localhost:3456` when VS Code activates. Terminals are created and managed inside VS Code's terminal panel — you see every command the agent runs in real time.
+
+```
+User: Create split ssh terminals using the following ssh command
+ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
+```
+
+<div align="center">↓</div>
+
+<img src="assets/images/create_ssh_pair-mcp-call.png" width="380" align="left">
+<br clear="left">
+
+<div align="center">↓</div>
+
+![Resulting Cursor Terminal Split View](assets/images/cursor-split-view.png)
+
+```
+Run the `worker/worker.py` file on the remote machine.
+Then run the `client/test_worker.py` on the local machine
+```
+
+<div align="center">↓</div>
+
+<img src="assets/images/launch-worker-mcp-call.png" width="380" align="left">
+
+<br clear="left">
+
+<img src="assets/images/run-test_worker.py-mcp-call.png" width="460" align="left">
+<br clear="left">
+
+<div align="center">↓</div>
+
+![Resulting Server-Client Split Terminal](assets/images/server-client-split-terminal-run.png)
+
+```
+User: The failures can be on the local client side or remote server side.
+Please investigate both the local and remote machine and implement a fix.
+```
+<div align="center">↓</div>
+<div align="center">...</div>
+
 ---
 
 ## tmux
-
-### How it works
-
-A standalone Node.js process that speaks MCP over stdio. It creates and manages named tmux sessions — attach to any of them with `tmux attach -t mta_<name>` to watch the agent work.
-
-```
-Agent (Claude Code / any MCP client)
-    │  MCP tool calls (stdio)
-    ▼
-Node.js MCP server
-    │  tmux CLI
-    ▼
-tmux sessions  ←  attach to watch
-```
 
 <details>
 <summary><strong>Setup</strong></summary>
@@ -162,6 +149,20 @@ npm run compile
 ```
 
 </details>
+
+### How it works
+
+A standalone Node.js process that speaks MCP over stdio. It creates and manages named tmux sessions — attach to any of them with `tmux attach -t mta_<name>` to watch the agent work.
+
+```
+Agent (Claude Code / any MCP client)
+    │  MCP tool calls (stdio)
+    ▼
+Node.js MCP server
+    │  tmux CLI
+    ▼
+tmux sessions  ←  attach to watch
+```
 
 ---
 
