@@ -1,8 +1,6 @@
 # Multi-Terminal Agent
 
-Let AI coding agents (Claude Code, Cursor) control multiple named terminal sessions simultaneously via the [Model Context Protocol](https://modelcontextprotocol.io).
-
-The agent drives the terminals. You watch.
+Let AI coding agents control multiple named terminal sessions simultaneously via the [Model Context Protocol](https://modelcontextprotocol.io). The agent drives the terminals. You watch. Debug across client-server processes, remote SSH connections, and more! One agent in control means no agent communication nightmare.
 
 **Contents**
 - [Use cases](#use-cases)
@@ -102,20 +100,32 @@ Agent: run_command("api", "cd backend && npm start", { background: true })
 The extension starts a local MCP HTTP server on `localhost:3456` when VS Code activates. Terminals are created and managed inside VS Code's terminal panel — you see every command the agent runs in real time.
 
 ```
-Agent (VS Code Agent)
-    │  MCP tool calls (HTTP)
-    ▼
-MCP Server (localhost:3456)
-    │  VS Code Extension API
-    |_________________
-    |                 |
-    ▼                 ▼
-┌─────────────────┬─────────────────┐
-│  Terminal Panel │  Terminal Panel │  ←  you watch these
-│    (server)     │    (client)     │
-└─────────────────┴─────────────────┘
+User: Create split ssh terminals using the following ssh command
+ssh -L 18080:127.0.0.1:8080 s...f@ssh.lightning.ai
 ```
 
+                    |
+                    V
+
+![create_ssh_pair MCP Call in Cursor](assets/images/create_ssh_pair-mcp-call.png)
+
+                    |
+                    V
+
+![Resulting Cursor Terminal Split View](assets/images/cursor-split-view.png)
+
+                    |
+                    V
+
+![Launch Worker MCP Call in Cursor](assets/images/launch-worker-mcp-call.png)
+
+![Run test_worker.py client MCP Call in Cursor](assets/images/run-test_worker.py-mcp-call.png)
+
+
+                    |
+                    V
+
+![Resulting Server-Client Split Terminal](assets/images/server-client-split-terminal-run.png)
 
 <details>
 <summary><strong>Setup</strong></summary>
