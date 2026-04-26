@@ -1,4 +1,4 @@
-# Multi-Terminal Agent
+# Multi-Terminal Agent (MTA)
 
 Let AI coding agents control multiple named terminal sessions simultaneously via the [Model Context Protocol](https://modelcontextprotocol.io). The agent drives the terminals. You watch. Debug across client-server processes, remote SSH connections, and more! One agent in control means no agent communication nightmare.
 
