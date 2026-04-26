@@ -220,8 +220,19 @@ No parameters.
 
 ---
 
+### `write_remote_file` — VS Code only
+Write a file on the machine attached to a named terminal (typically the remote pane of an SSH pair). Content is base64-encoded and written via `python3`, which avoids shell-quoting issues and works for any UTF-8 content. Parent directories are created automatically. `~` is expanded in the terminal's session.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `terminal` | string | Terminal to write through (use the remote pane for SSH pairs) |
+| `path` | string | Absolute path on the remote machine (`~` is allowed) |
+| `content` | string | Full file content to write |
+
+---
+
 ### `patch_file`
-Apply a unified diff to a file through a named terminal. Writes the patch to `/tmp`, displays it with ANSI colour coding, then applies it with `git apply` (falling back to `patch -p1`). Prefer this over rewriting an entire remote file.
+Apply a unified diff to a file through a named terminal. Writes the patch to `/tmp`, displays it with ANSI colour coding, then applies it with `git apply` (falling back to `patch -p1`).
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -293,8 +304,8 @@ Agent: run_command("remote", "tail -50 logs/error.log")
 # → KeyError: 'user_id' in handlers/auth.py:34
 # Read the offending file on the remote
 Agent: run_command("remote", "cat handlers/auth.py")
-# Apply a fix directly to the remote file via a unified diff
-Agent: patch_file("remote", "/app/handlers/auth.py", "<unified diff>", "/app")
+# Write the fixed version of the file directly to the remote
+Agent: write_remote_file("remote", "/app/handlers/auth.py", "<full fixed content>")
 # Restart the app on the remote and verify it's healthy
 Agent: run_command("remote", "systemctl restart app")
 Agent: run_command("remote", "curl -s localhost:8080/health")
