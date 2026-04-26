@@ -254,31 +254,42 @@ Close and remove a named terminal.
 
 ## Use cases
 
-### Client/server debugging
+### Debugging across two machines (local + Docker / remote VM)
+
+Cross-system bugs are hard to debug with a single agent because it can only see one side. With `create_ssh_pair`, one agent gets a local terminal and a remote terminal in the same session — it can tail logs on the remote, push a fix from local, and verify the result without losing context about either side.
+
+```
+Agent: create_ssh_pair("local", "remote", "ssh user@vm", { remote_cwd: "/app", ports: [{remote: 8080, local: 8080}] })
+Agent: run_command("remote", "tail -50 logs/error.log")
+Agent: run_command("local", "scp -r src/ user@vm:/app/src/")
+Agent: run_command("remote", "systemctl restart app && curl localhost:8080/health")
+```
+
+---
+
+### Server + client iteration (e.g. ClickHouse, databases, compilers)
+
+When a bug requires recompiling a server and re-running a client test, a single-terminal agent gets stuck — it can't keep the server running while also running the client. With a terminal pair, the agent restarts the server in one pane and runs tests in the other, iterating freely without any manual intervention.
 
 ```
 Agent: create_terminal_pair("server", "client")
-Agent: run_command("server", "cd backend && npm start", { background: true })
-Agent: run_command("client", "cd frontend && npm run dev", { background: true })
-# ... after a code change ...
+Agent: run_command("server", "./build/clickhouse-server --config server.xml", { background: true })
+Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
+# agent finds a bug, patches source, then:
 Agent: send_input("server", "C-c")
-Agent: run_command("server", "cd backend && npm start", { background: true })
+Agent: run_command("server", "ninja -C build && ./build/clickhouse-server --config server.xml", { background: true })
+Agent: run_command("client", "./build/clickhouse-client --query 'SELECT ...'")
 ```
 
-### SSH remote debugging
+---
+
+### Frontend + backend running concurrently
 
 ```
-Agent: create_ssh_pair("local", "remote", "ssh user@staging", { remote_cwd: "/home/deploy/app" })
-Agent: run_command("remote", "cat logs/error.log | tail -30")
-Agent: run_command("local", "npm run build && scp -r dist/ user@staging:/home/deploy/app/")
-Agent: run_command("remote", "pm2 restart app")
-```
-
-### Test runner + dev server
-
-```
-Agent: create_terminal_pair("server", "tests")
-Agent: run_command("server", "npm start", { background: true })
-Agent: run_command("tests", "npm test")
-Agent: run_command("tests", "npm test -- --grep 'auth'")
+Agent: create_terminal_pair("api", "web")
+Agent: run_command("api", "cd backend && npm start", { background: true })
+Agent: run_command("web", "cd frontend && npm run dev", { background: true })
+# after a code change:
+Agent: send_input("api", "C-c")
+Agent: run_command("api", "cd backend && npm start", { background: true })
 ```
