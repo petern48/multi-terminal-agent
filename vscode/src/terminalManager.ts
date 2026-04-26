@@ -52,13 +52,21 @@ function findProbableAbsPathInOutput(text: string): string | undefined {
 export class TerminalManager {
   private terminals = new Map<string, TerminalEntry>();
   private static readonly MAX_BUFFER = 500;
+  // Tracks executions the agent started — these must NOT be read by the event handler.
+  // TerminalShellExecution.read() is single-consumer: if the event handler claims the
+  // stream first, runCommand's for-await hangs forever waiting for data that never arrives.
+  private agentExecutions = new Set<vscode.TerminalShellExecution>();
 
   constructor(context: vscode.ExtensionContext) {
-    // Capture output for commands run via shellIntegration.executeCommand (or sent via sendText when SI is active)
     context.subscriptions.push(
       vscode.window.onDidStartTerminalShellExecution(async (event) => {
         const entry = this.findByTerminal(event.terminal);
         if (!entry) return;
+        // Agent executions are read exclusively by runCommand — skip here to avoid
+        // claiming the single-consumer stream before runCommand can.
+        if (this.agentExecutions.has(event.execution)) return;
+        // User ran a command directly — mark blocked and buffer the output.
+        entry.blocked = true;
         const stream = event.execution.read();
         for await (const data of stream) {
           const clean = stripAnsi(data);
@@ -72,6 +80,7 @@ export class TerminalManager {
       vscode.window.onDidEndTerminalShellExecution((event) => {
         const entry = this.findByTerminal(event.terminal);
         if (entry) entry.blocked = false;
+        this.agentExecutions.delete(event.execution);
       }),
       vscode.window.onDidCloseTerminal((t) => {
         const entry = this.findByTerminal(t);
@@ -197,6 +206,8 @@ export class TerminalManager {
       throw new Error(`Shell integration not active on "${name}" — run any command manually first to activate it`);
     }
     const execution = entry.terminal.shellIntegration.executeCommand(command);
+    // Register before the onDidStartTerminalShellExecution event fires so the handler skips it
+    this.agentExecutions.add(execution);
 
     // Capture exit code from the end event matched by execution identity
     let exitCode: number | undefined;
@@ -222,6 +233,16 @@ export class TerminalManager {
 
     const output = await Promise.race([readAll(), timeout]);
     exitCode = await Promise.race([exitCodePromise, new Promise<undefined>((r) => setTimeout(() => r(undefined), 500))]);
+
+    // Buffer the output so readOutput() can return it after this call returns
+    if (output) {
+      const lines = output.split("\n");
+      entry.outputBuffer.push(...lines);
+      if (entry.outputBuffer.length > TerminalManager.MAX_BUFFER) {
+        entry.outputBuffer.splice(0, entry.outputBuffer.length - TerminalManager.MAX_BUFFER);
+      }
+    }
+
     return { output, exitCode };
   }
 
