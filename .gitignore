@@ -5,6 +5,7 @@
 /tmp
 /out-tsc
 vscode/out/
+tmux/out/
 
 # Runtime data
 pids
