@@ -183,19 +183,19 @@ export class TerminalManager {
   ): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
 
+    if (entry.blocked) {
+      throw new Error(
+        `Terminal "${name}" has a background process running. ` +
+        `Send C-c first with send_input('C-c'), then retry the command.`
+      );
+    }
+
     if (opts?.background) {
       entry.terminal.sendText(command, true);
       entry.terminal.show(false);
       await new Promise((r) => setTimeout(r, 1000));
       entry.blocked = true;
       return { output: this.readOutput(name, 50), exitCode: undefined };
-    }
-
-    if (entry.blocked) {
-      throw new Error(
-        `Terminal "${name}" has a background process running. ` +
-        `Send C-c first with send_input('C-c'), then retry the command.`
-      );
     }
 
     if (entry.role === "remote") {
