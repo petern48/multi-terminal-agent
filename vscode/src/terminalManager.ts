@@ -18,6 +18,8 @@ interface TerminalEntry {
   remoteCwd?: string;
   /** How `remoteCwd` was set: user-provided or discovered via `pwd` on the remote. */
   remoteCwdSource?: RemoteCwdSource;
+  /** True while a background process is running; blocks run_command until C-c is sent. */
+  blocked?: boolean;
 }
 
 function injectSshPortForwarding(command: string, ports: PortMapping[]): string {
@@ -69,6 +71,10 @@ export class TerminalManager {
             entry.outputBuffer.splice(0, entry.outputBuffer.length - TerminalManager.MAX_BUFFER);
           }
         }
+      }),
+      vscode.window.onDidEndTerminalShellExecution((event) => {
+        const entry = this.findByTerminal(event.terminal);
+        if (entry) entry.blocked = false;
       }),
       vscode.window.onDidCloseTerminal((t) => {
         const entry = this.findByTerminal(t);
@@ -178,13 +184,18 @@ export class TerminalManager {
     const entry = this.getAlive(name);
 
     if (opts?.background) {
-      // Send the command without blocking — it runs in the terminal foreground.
-      // sendText triggers shell integration hooks so output is still buffered.
       entry.terminal.sendText(command, true);
       entry.terminal.show(false);
-      // Wait briefly then return a startup snapshot so the agent can verify the process started.
-      await new Promise((r) => setTimeout(r, 1000));  // 1 second
+      await new Promise((r) => setTimeout(r, 1000));
+      entry.blocked = true;
       return { output: this.readOutput(name, 50), exitCode: undefined };
+    }
+
+    if (entry.blocked) {
+      throw new Error(
+        `Terminal "${name}" has a background process running. ` +
+        `Send C-c first with send_input('C-c'), then retry the command.`
+      );
     }
 
     if (entry.role === "remote") {
@@ -271,6 +282,7 @@ export class TerminalManager {
     const entry = this.getAlive(name);
     // Map common control sequences so callers can use tmux-style names
     const resolved = text === "C-c" ? "\x03" : text === "C-d" ? "\x04" : text;
+    if (resolved === "\x03") entry.blocked = false;
     entry.terminal.sendText(resolved, false);
     return `Sent input to "${name}"`;
   }
@@ -287,6 +299,7 @@ export class TerminalManager {
   listTerminals(): {
     name: string;
     alive: boolean;
+    blocked?: boolean;
     role?: "local" | "remote";
     ports?: PortMapping[];
     cwd?: string;
@@ -295,6 +308,7 @@ export class TerminalManager {
     return Array.from(this.terminals.entries()).map(([name, e]) => ({
       name,
       alive: e.alive,
+      ...(e.blocked ? { blocked: true } : {}),
       ...(e.role ? { role: e.role } : {}),
       ...(e.ports ? { ports: e.ports } : {}),
       ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
