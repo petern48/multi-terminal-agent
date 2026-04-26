@@ -4,6 +4,19 @@ Let AI coding agents (Claude Code, Cursor) control multiple named terminal sessi
 
 The agent drives the terminals. You watch.
 
+**Contents**
+- [Use cases](#use-cases)
+- [VS Code extension](#vs-code-extension) ⭐
+  - [How it works](#how-it-works)
+  - [Setup](#setup)
+- [tmux](#tmux)
+  - [How it works](#how-it-works-1)
+  - [Setup](#setup-1)
+- [AGENTS.md](#agentsmd)
+- [API (MCP Server Tools)](#api-mcp-server-tools)
+
+---
+
 Two implementations — pick one:
 
 | | **VS Code extension** ⭐ recommended | **tmux** |
