@@ -11,6 +11,8 @@ interface TerminalEntry {
   terminal: vscode.Terminal;
   outputBuffer: string[];
   alive: boolean;
+  /** True while a background process is running in this terminal. Cleared on C-c or when shell integration detects the process exited. */
+  blocked: boolean;
   role?: "local" | "remote";
   ports?: PortMapping[];
   /** Remote session cwd (e.g. after SSH) — in-memory only, lives with this terminal. */
@@ -66,6 +68,10 @@ export class TerminalManager {
           }
         }
       }),
+      vscode.window.onDidEndTerminalShellExecution((event) => {
+        const entry = this.findByTerminal(event.terminal);
+        if (entry) entry.blocked = false;
+      }),
       vscode.window.onDidCloseTerminal((t) => {
         const entry = this.findByTerminal(t);
         if (entry) entry.alive = false;
@@ -80,7 +86,7 @@ export class TerminalManager {
       return `Terminal "${name}" already exists and is active`;
     }
     const terminal = vscode.window.createTerminal({ name, cwd });
-    this.terminals.set(name, { terminal, outputBuffer: [], alive: true });
+    this.terminals.set(name, { terminal, outputBuffer: [], alive: true, blocked: false });
     terminal.show();
     return `Created terminal "${name}"`;
   }
@@ -104,13 +110,14 @@ export class TerminalManager {
     }
 
     const localTerminal = vscode.window.createTerminal({ name: localName, cwd });
-    this.terminals.set(localName, { terminal: localTerminal, outputBuffer: [], alive: true, role: "local", ports });
+    this.terminals.set(localName, { terminal: localTerminal, outputBuffer: [], alive: true, blocked: false, role: "local", ports });
 
     const remoteTerminal = vscode.window.createTerminal({ name: remoteName, location: { parentTerminal: localTerminal } });
     this.terminals.set(remoteName, {
       terminal: remoteTerminal,
       outputBuffer: [],
       alive: true,
+      blocked: false,
       role: "remote",
       ports,
     });
@@ -158,9 +165,9 @@ export class TerminalManager {
 
   createTerminalPair(name1: string, name2: string, cwd?: string): string {
     const t1 = vscode.window.createTerminal({ name: name1, cwd });
-    this.terminals.set(name1, { terminal: t1, outputBuffer: [], alive: true });
+    this.terminals.set(name1, { terminal: t1, outputBuffer: [], alive: true, blocked: false });
     const t2 = vscode.window.createTerminal({ name: name2, cwd, location: { parentTerminal: t1 } });
-    this.terminals.set(name2, { terminal: t2, outputBuffer: [], alive: true });
+    this.terminals.set(name2, { terminal: t2, outputBuffer: [], alive: true, blocked: false });
     t1.show();
     return `Created terminals "${name1}" (left) and "${name2}" (right) side by side`;
   }
@@ -174,12 +181,10 @@ export class TerminalManager {
     const entry = this.getAlive(name);
 
     if (opts?.background) {
-      // Send the command without blocking — it runs in the terminal foreground.
-      // sendText triggers shell integration hooks so output is still buffered.
+      entry.blocked = true;
       entry.terminal.sendText(command, true);
       entry.terminal.show(false);
-      // Wait briefly then return a startup snapshot so the agent can verify the process started.
-      await new Promise((r) => setTimeout(r, 1000));  // 1 second
+      await new Promise((r) => setTimeout(r, 1000));
       return { output: this.readOutput(name, 50), exitCode: undefined };
     }
 
@@ -229,8 +234,8 @@ export class TerminalManager {
 
   sendInput(name: string, text: string): string {
     const entry = this.getAlive(name);
-    // Map common control sequences so callers can use tmux-style names
     const resolved = text === "C-c" ? "\x03" : text === "C-d" ? "\x04" : text;
+    if (resolved === "\x03") entry.blocked = false;
     entry.terminal.sendText(resolved, false);
     return `Sent input to "${name}"`;
   }
@@ -247,6 +252,7 @@ export class TerminalManager {
   listTerminals(): {
     name: string;
     alive: boolean;
+    blocked: boolean;
     role?: "local" | "remote";
     ports?: PortMapping[];
     cwd?: string;
@@ -255,6 +261,7 @@ export class TerminalManager {
     return Array.from(this.terminals.entries()).map(([name, e]) => ({
       name,
       alive: e.alive,
+      blocked: e.blocked,
       ...(e.role ? { role: e.role } : {}),
       ...(e.ports ? { ports: e.ports } : {}),
       ...(e.remoteCwd ? { cwd: e.remoteCwd, ...(e.remoteCwdSource ? { remote_cwd_source: e.remoteCwdSource } : {}) } : {}),
