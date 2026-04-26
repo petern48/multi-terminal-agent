@@ -170,6 +170,9 @@ class TerminalManager {
     }
     async runCommand(name, command, timeoutMs = 30000, opts) {
         const entry = this.getAlive(name);
+        if (entry.blocked) {
+            throw new Error(`Terminal "${name}" is blocked by a background process — send C-c first`);
+        }
         if (opts?.background) {
             entry.blocked = true;
             entry.terminal.sendText(command, true);

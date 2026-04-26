@@ -180,6 +180,10 @@ export class TerminalManager {
   ): Promise<{ output: string; exitCode: number | undefined }> {
     const entry = this.getAlive(name);
 
+    if (entry.blocked) {
+      throw new Error(`Terminal "${name}" is blocked by a background process. Please call send_input("C-c") (or similar) to unblock it.`);
+    }
+
     if (opts?.background) {
       entry.blocked = true;
       entry.terminal.sendText(command, true);
