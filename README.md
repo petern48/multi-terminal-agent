@@ -135,7 +135,9 @@ Copy [`assets/AGENTS.md`](assets/AGENTS.md) into the root of any project where y
 
 ---
 
-## API
+## API (MCP Server Tools)
+
+> This section is for agents and MCP clients. If you're a human setting up the server, you only need the Setup section above.
 
 Both implementations share the same core tool set. Tools marked **VS Code only** or **tmux only** are not available in the other.
 
