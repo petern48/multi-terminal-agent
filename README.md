@@ -110,7 +110,43 @@ Please investigate both the local and remote machine and implement a fix.
 ```
 
 <div align="center">↓</div>
-<div align="center">...</div>
+
+<details>
+<summary>MCP Server intelligently tells the agent to Ctrl+C the server when it forgets</summary>
+
+<img src="assets/images/server_warns_to_ctrlC_first.png" width="300" align="left">
+
+Server attempts to read content on the remote machine, while the terminal was still blocked. The MCP Server intelligently tracks that the terminal is blocked and responds with a reply suggesting to Ctrl+C to stop the server first. Without this, the command fails to execute leaving the agent confused as it sruggles to make progress.
+
+<br clear="left">
+<br clear="left">
+</details>
+
+<img src="assets/images/ctrl-C_server.png" width="300" align="left">
+<br clear="left">
+
+<div align="center">...(agent investigates code on the remote server and the local machine)...</div>
+
+<div align="center">↓</div>
+
+<img src="assets/images/write_remote_file.png" width="300" align="left">
+<br clear="left">
+
+> Agent uses a special `write_remote_file` tool to update the remote easily. Simulataneously it updates files on the local machine.
+
+<img src="assets/images/run_worker.png" width="300" align="left">
+<br clear="left">
+
+> Leverage the MCP Server to restart the server on the remote machine
+
+<img src="assets/images/test_passing.png" width="300" align="left">
+<br clear="left">
+
+> Tests now pass after runniing the tests (client) on the updated server
+
+Overall, the key value add of MTA in this example is enabling the agent to kill the server (`Ctrl + C`) and restart it back up. Notably, they restart the server in the same terminal that is still visible to the user, prioritizing a good developer experience. This pain point exists even when developing both client and server locally.
+
+**Why not use a Multi-Agent workflow, here?** Yes, these would work. However, sometimes that is overkill, which is where MTA comes in. Especially when client and server code are on the same machine (so one agent can access it all), the value of adding another agent is simply to kill and restart the server. This would add extra token usage and agent-to-agent communication to the mix, unnecessarily (What a waste!!!). Enabling a single agent to take control of the other terminal is the best solution in this case. MTA solves this narrow specific use case more efficiently and simply than existing multi-agent workflows.
 
 ---
 
