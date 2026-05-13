@@ -115,12 +115,16 @@ Please investigate both the local and remote machine and implement a fix.
 <summary>MCP Server intelligently tells the agent to Ctrl+C the server when it forgets</summary>
 
 <img src="assets/images/server_warns_to_ctrlC_first.png" width="300" align="left">
+<br clear="left">
 
 Server attempts to read content on the remote machine, while the terminal was still blocked. The MCP Server intelligently tracks that the terminal is blocked and responds with a reply suggesting to Ctrl+C to stop the server first. Without this, the command fails to execute leaving the agent confused as it sruggles to make progress.
 
-<br clear="left">
-<br clear="left">
 </details>
+
+<!-- <br clear="left"> -->
+<div align="center">↓</div>
+
+Now the Agent `Ctrl+C`s the remote machine to gain back access to the remote terminal to investigate.
 
 <img src="assets/images/ctrl-C_server.png" width="300" align="left">
 <br clear="left">
